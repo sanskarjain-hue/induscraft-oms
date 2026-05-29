@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { orders, vendors, serviceJobs, replacements, CHANNELS, STAGES, ROLES } from "./data";
+import { ROLES } from "./data";
+import * as api from "./api";
 import Dashboard from "./Dashboard";
 import OrdersList from "./OrdersList";
 import OrderDetail from "./OrderDetail";
@@ -13,19 +14,6 @@ const NAV = [
   { id: "vendors", label: "Vendors", icon: "ti-users" },
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
   { id: "reports", label: "Reports", icon: "ti-chart-bar" },
-];
-
-const USERS = [
-  { username: "yash",     password: "admin123", role: "admin",      name: "Yash Jain",    initials: "YJ" },
-  { username: "mukesh",   password: "admin123", role: "admin",      name: "Mukesh Jain",  initials: "MJ" },
-  { username: "sarthak",  password: "admin123", role: "admin",      name: "Sarthak Jain", initials: "SJ" },
-  { username: "archana",  password: "admin123", role: "admin",      name: "Archana Jain", initials: "AJ" },
-  { username: "sanskar",  password: "admin123", role: "admin",      name: "Sanskar Jain", initials: "SK" },
-  { username: "kishore",  password: "sales123", role: "sales",      name: "Kishore",      initials: "KR" },
-  { username: "rajveer",  password: "sales123", role: "sales",      name: "Rajveer",      initials: "RV" },
-  { username: "ramesh",   password: "sales123", role: "sales",      name: "Ramesh",       initials: "RM" },
-  { username: "qcteam",   password: "qc123",    role: "qc",         name: "QC Team",      initials: "QC" },
-  { username: "accounts", password: "acc123",   role: "accountant", name: "Accountant",   initials: "AC" },
 ];
 
 const themeCSS = `
@@ -78,19 +66,18 @@ function LoginScreen({ onLogin, darkMode, setDarkMode }) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setTimeout(() => {
-      const user = USERS.find(u => u.username === username.trim().toLowerCase() && u.password === password);
-      if (user) {
-        onLogin(user);
-      } else {
-        setError("Incorrect username or password.");
-        setLoading(false);
-      }
-    }, 600);
+    try {
+      const user = await api.login(username.trim().toLowerCase(), password);
+      onLogin(user);
+    } catch (err) {
+      setError("Incorrect username or password.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -131,15 +118,6 @@ function LoginScreen({ onLogin, darkMode, setDarkMode }) {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <div style={{ marginTop: 24, borderTop: "0.5px solid #e5e5e0", paddingTop: 16 }}>
-          <div style={{ fontSize: 11, color: "#666660", marginBottom: 8 }}>Demo credentials</div>
-          {[["yash / admin123", "Admin"], ["kishore / sales123", "Sales"], ["qcteam / qc123", "QC"], ["accounts / acc123", "Accountant"]].map(([cred, role]) => (
-            <div key={cred} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
-              <span style={{ color: "#666660", fontFamily: "monospace" }}>{cred}</span>
-              <span style={{ color: "#999" }}>{role}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -149,17 +127,49 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedVendorId, setSelectedVendorId] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [allOrders, setAllOrders] = useState(orders);
-  const [allVendors, setAllVendors] = useState(vendors);
-  const [allServiceJobs] = useState(serviceJobs);
-  const [allReplacements] = useState(replacements);
+  const [currentUser, setCurrentUser] = useState(() => api.getStoredUser());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("induscraft-theme") === "dark");
+
+  // Data state
+  const [allOrders, setAllOrders] = useState([]);
+  const [allVendors, setAllVendors] = useState([]);
+  const [allServiceJobs, setAllServiceJobs] = useState([]);
+  const [allReplacements, setAllReplacements] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("induscraft-theme", darkMode ? "dark" : "light");
     document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
+
+  // Load all data when user logs in
+  useEffect(() => {
+    if (!currentUser) return;
+    loadAllData();
+  }, [currentUser]);
+
+  async function loadAllData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [orders, vendors, jobs, replacements] = await Promise.all([
+        api.fetchOrders(),
+        api.fetchVendors(),
+        api.fetchServiceJobs(),
+        api.fetchReplacements(),
+      ]);
+      setAllOrders(orders);
+      setAllVendors(vendors);
+      setAllServiceJobs(jobs);
+      setAllReplacements(replacements);
+    } catch (err) {
+      setError("Failed to load data. Please refresh.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const role = currentUser?.role || "admin";
 
@@ -169,14 +179,57 @@ export default function App() {
     if (vendorId) setSelectedVendorId(vendorId);
   }
 
-  const selectedOrder = allOrders.find(o => o.id === selectedOrderId);
+  const selectedOrder = allOrders.find(o => o.id === selectedOrderId || o._id === selectedOrderId);
 
-  function updateOrder(updatedOrder) {
-    setAllOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+  async function handleUpdateOrder(updatedOrder) {
+    try {
+      const saved = await api.updateOrder(updatedOrder.id, updatedOrder);
+      setAllOrders(prev => prev.map(o => (o.id === saved.id || o._id === saved._id) ? saved : o));
+    } catch (err) {
+      console.error("Update order error:", err);
+      // Optimistic update fallback
+      setAllOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+    }
+  }
+
+  async function handleNewOrder(newOrder) {
+    try {
+      const saved = await api.createOrder(newOrder);
+      setAllOrders(prev => [saved, ...prev]);
+      navigate("orders", saved.id);
+    } catch (err) {
+      console.error("Create order error:", err);
+      // Fallback: add locally
+      setAllOrders(prev => [newOrder, ...prev]);
+      navigate("orders", newOrder.id);
+    }
+  }
+
+  async function handleAddVendor(vendor) {
+    try {
+      const saved = await api.createVendor(vendor);
+      setAllVendors(prev => [...prev, saved]);
+    } catch (err) {
+      setAllVendors(prev => [...prev, vendor]);
+    }
+  }
+
+  async function handleAddVendors(vendors) {
+    try {
+      const saved = await api.importVendors(vendors);
+      setAllVendors(prev => [...prev, ...saved]);
+    } catch (err) {
+      setAllVendors(prev => [...prev, ...vendors]);
+    }
   }
 
   function handleLogout() {
+    api.logout();
     setCurrentUser(null);
+    setAllOrders([]);
+    setAllVendors([]);
+    setAllServiceJobs([]);
+    setAllReplacements([]);
     setPage("dashboard");
     setSelectedOrderId(null);
     setSelectedVendorId(null);
@@ -190,7 +243,7 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 
       {!currentUser ? (
-        <LoginScreen onLogin={setCurrentUser} darkMode={darkMode} setDarkMode={setDarkMode} />
+        <LoginScreen onLogin={user => { setCurrentUser(user); }} darkMode={darkMode} setDarkMode={setDarkMode} />
       ) : (
         <>
           <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
@@ -207,6 +260,7 @@ export default function App() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {loading && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Loading...</div>}
               <button onClick={() => setDarkMode(d => !d)} style={{ width: 32, height: 32, borderRadius: "50%", border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontFamily: "inherit" }}>
                 <i className={darkMode ? "ti ti-sun" : "ti ti-moon"} />
               </button>
@@ -221,22 +275,42 @@ export default function App() {
               </button>
             </div>
           </nav>
+
+          {error && (
+            <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              {error}
+              <button onClick={loadAllData} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Retry</button>
+            </div>
+          )}
+
           <main style={{ padding: "20px 24px" }}>
             {page === "dashboard" && <Dashboard orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} />}
             {page === "orders" && !selectedOrderId && (
-              <OrdersList orders={allOrders} vendors={allVendors} role={role} onOrderClick={(id) => navigate("orders", id)}
-                onNewOrder={(newOrder) => { setAllOrders(prev => [newOrder, ...prev]); navigate("orders", newOrder.id); }} />
+              <OrdersList orders={allOrders} vendors={allVendors} role={role}
+                onOrderClick={(id) => navigate("orders", id)}
+                onNewOrder={handleNewOrder} />
             )}
             {page === "orders" && selectedOrderId && selectedOrder && (
-              <OrderDetail order={selectedOrder} role={role} vendors={allVendors} onBack={() => setSelectedOrderId(null)}
-                onUpdate={updateOrder} onVendorClick={(vid) => navigate("vendors", null, vid)} currentUser={currentUser} />
+              <OrderDetail order={selectedOrder} role={role} vendors={allVendors}
+                onBack={() => setSelectedOrderId(null)}
+                onUpdate={handleUpdateOrder}
+                onVendorClick={(vid) => navigate("vendors", null, vid)}
+                currentUser={currentUser} />
             )}
             {page === "vendors" && (
-              <VendorsSection vendors={allVendors} orders={allOrders} selectedVendorId={selectedVendorId}
-                onVendorSelect={setSelectedVendorId} onOrderClick={(id) => navigate("orders", id)} role={role}
-                onAddVendor={(v) => setAllVendors(prev => [...prev, v])} />
+              <VendorsSection vendors={allVendors} orders={allOrders}
+                selectedVendorId={selectedVendorId}
+                onVendorSelect={setSelectedVendorId}
+                onOrderClick={(id) => navigate("orders", id)}
+                role={role}
+                onAddVendor={handleAddVendor}
+                onAddVendors={handleAddVendors} />
             )}
-            {page === "aftersales" && <AfterSales serviceJobs={allServiceJobs} replacements={allReplacements} orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} />}
+            {page === "aftersales" && (
+              <AfterSales serviceJobs={allServiceJobs} replacements={allReplacements}
+                orders={allOrders} role={role}
+                onOrderClick={(id) => navigate("orders", id)} />
+            )}
             {page === "reports" && <Reports orders={allOrders} role={role} />}
           </main>
         </>

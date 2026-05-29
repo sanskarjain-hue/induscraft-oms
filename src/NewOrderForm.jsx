@@ -41,6 +41,7 @@ function emptyItem() {
     fabricCode: "",
     hardware: [],
     images: [],
+    measurementPhotos: [],
     remarks: "",
     finishingSteps: ["Polish"],
     vendorId: "",
@@ -251,6 +252,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
         fabricCode: item.fabricCode || null,
         hardware: item.hardware,
         images: item.images || [],
+        measurementPhotos: item.measurementPhotos || [],
         remarks: item.remarks,
         finishingSteps: item.finishingSteps,
         vendorId: "",
@@ -471,12 +473,22 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
 
                     {/* Product images */}
                     <FileUploadArea
-                      label="Product images (reference photos, drawings)"
+                      label="Product images (front, back, reference photos)"
                       accept="image/*,.pdf"
                       multiple={true}
                       files={item.images || []}
                       onAdd={val => updateItem(idx, "images", val)}
                       hint="JPG, PNG, PDF"
+                    />
+
+                    {/* Measurement photos */}
+                    <FileUploadArea
+                      label="Measurement drawing / sketch"
+                      accept="image/*,.pdf"
+                      multiple={true}
+                      files={item.measurementPhotos || []}
+                      onAdd={val => updateItem(idx, "measurementPhotos", val)}
+                      hint="Upload measurement drawing or sketch"
                     />
 
                     <Field label="Remarks">
@@ -509,10 +521,14 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
           {/* STEP 5 — Delivery & notes */}
           {step === 5 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <Field label="Expected delivery date *">
+              <Field label="Recommended delivery date *">
                 <input type="date" value={originalDelivery} onChange={e => setOriginalDelivery(e.target.value)}
                   style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} />
                 {errors.originalDelivery && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.originalDelivery}</div>}
+                <div style={{ fontSize: 11, color: "#666660", marginTop: 5 }}>
+                  <i className="ti ti-info-circle" style={{ fontSize: 12, marginRight: 4 }} />
+                  This is your recommended date. Yash/Admin will confirm the final delivery date.
+                </div>
               </Field>
 
               <Field label="Notes (internal)">

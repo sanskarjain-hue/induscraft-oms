@@ -1,4 +1,6 @@
 import { useState } from "react";
+import PrintView from "./PrintView";
+import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency } from "./ui";
 import { STAGES } from "./data";
 
@@ -58,6 +60,55 @@ function OrderInfoTab({ order, role, onUpdate }) {
           ))}
         </Card>
       </div>
+
+      {/* Delivery date confirmation — Admin confirms salesperson recommended date */}
+      <Card style={{ border: order.deliveryConfirmed ? "0.5px solid #97C459" : "0.5px solid #EF9F27" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <SectionTitle style={{ marginBottom: 0 }}>Delivery date</SectionTitle>
+          {order.deliveryConfirmed ? (
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 7, background: "#EAF3DE", color: "#27500A", fontWeight: 500 }}>
+              <i className="ti ti-check" style={{ fontSize: 11, marginRight: 3 }} />Confirmed
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 7, background: "#FAEEDA", color: "#633806", fontWeight: 500 }}>
+              Awaiting confirmation
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 20, alignItems: "flex-end" }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 3 }}>Recommended by salesperson</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>{order.items[0]?.originalDelivery || "—"}</div>
+          </div>
+          {role === "admin" && !order.deliveryConfirmed && (
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 3 }}>Confirm final date</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="date" defaultValue={order.items[0]?.originalDelivery || ""}
+                  id="confirm-delivery-input"
+                  style={{ fontSize: 13, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
+                <button onClick={() => {
+                  const val = document.getElementById("confirm-delivery-input").value;
+                  const updated = {
+                    ...order,
+                    deliveryConfirmed: true,
+                    items: order.items.map(i => ({ ...i, originalDelivery: val, currentDelivery: val }))
+                  };
+                  onUpdate(updated);
+                }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                  Confirm
+                </button>
+              </div>
+            </div>
+          )}
+          {order.deliveryConfirmed && (
+            <div>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 3 }}>Confirmed delivery date</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: "#27500A" }}>{order.items[0]?.originalDelivery || "—"}</div>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Pipeline */}
       <Card>
@@ -477,10 +528,18 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                       <div style={{ fontSize: 13, fontWeight: 500, color: isDone ? "#3B6D11" : isActive ? "#854F0B" : "var(--color-text-secondary)", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span>{stageName}</span>
                         <div style={{ display: "flex", gap: 6 }}>
-                          {isActive && userCanAdvance && stageName !== "QC" && (
+                          {isActive && userCanAdvance && stageName !== "QC" && stageName !== "Raw ready" && stageName !== "Delivered to warehouse" && (
                             <button onClick={() => advanceItem(item.id)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                               <i className="ti ti-arrow-right" style={{ fontSize: 12 }} /> Mark complete
                             </button>
+                          )}
+                          {isActive && userCanAdvance && stageName === "Raw ready" && item.rawPhotosApproved && (
+                            <button onClick={() => advanceItem(item.id)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                              <i className="ti ti-arrow-right" style={{ fontSize: 12 }} /> Proceed to finishing
+                            </button>
+                          )}
+                          {isActive && userCanAdvance && stageName === "Raw ready" && !item.rawPhotosApproved && (
+                            <span style={{ fontSize: 11, color: "#BA7517", fontStyle: "italic" }}>Awaiting raw photo approval</span>
                           )}
                           {isActive && role === "admin" && (
                             <button onClick={() => setDelayModal(item.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "0.5px solid #BA7517", background: "transparent", color: "#854F0B", cursor: "pointer", fontFamily: "inherit" }}>
@@ -493,6 +552,60 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                       {isDone && stageName === "QC" && item.qcStatus && (
                         <div style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, background: item.qcStatus === "pass" ? "#EAF3DE" : "#FCEBEB", color: item.qcStatus === "pass" ? "#27500A" : "#791F1F", marginTop: 4 }}>
                           QC {item.qcStatus === "pass" ? "Passed" : "Failed"}{item.qcNotes ? ` — ${item.qcNotes}` : ""}
+                        </div>
+                      )}
+                      {/* Raw photo upload at raw ready stage — QC uploads, salesperson approves before polishing */}
+                      {isActive && stageName === "Raw ready" && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>
+                            QC team must upload raw product photos. Salesperson approval required before polishing can begin.
+                          </div>
+                          {(role === "admin" || role === "qc") && (
+                            <div style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>Raw product photos</div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {(item.rawPhotos || []).map((photo, pi) => (
+                                  <div key={pi} style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)" }}>
+                                    {photo.data ? <img src={photo.data} alt="Raw" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-photo" style={{ fontSize: 18, color: "var(--color-text-secondary)" }} /></div>}
+                                  </div>
+                                ))}
+                                <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3 }}>
+                                  <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
+                                  <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
+                                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => {
+                                    Array.from(e.target.files).forEach(file => {
+                                      const reader = new FileReader();
+                                      reader.onload = ev => {
+                                        const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotos: [...(i.rawPhotos || []), { name: file.name, type: file.type, data: ev.target.result }] } : i) };
+                                        onUpdate(updated);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    });
+                                    e.target.value = "";
+                                  }} />
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                          {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (role === "admin" || role === "sales") && (
+                            <div style={{ marginTop: 8 }}>
+                              <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6 }}>
+                                Review the raw photos above and approve to allow polishing to begin.
+                              </div>
+                              <button onClick={() => {
+                                const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotosApproved: true } : i) };
+                                onUpdate(updated);
+                              }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                                <i className="ti ti-check" style={{ fontSize: 13 }} /> Approve — proceed to finishing
+                              </button>
+                            </div>
+                          )}
+                          {item.rawPhotosApproved && (
+                            <div style={{ fontSize: 12, color: "#27500A", marginTop: 6, fontWeight: 500 }}>
+                              <i className="ti ti-check" style={{ fontSize: 13, marginRight: 4 }} />Raw photos approved — polishing can begin
+                            </div>
+                          )}
+                          {/* Block advance to finishing unless approved */}
                         </div>
                       )}
 
@@ -584,7 +697,17 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                       )}
 
                       {isActive && stageName === "Delivered to warehouse" && (
-                        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>Awaiting customer availability to schedule delivery</div>
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 8 }}>
+                            <i className="ti ti-clock" style={{ fontSize: 13, marginRight: 4 }} />
+                            Item is at warehouse. Waiting for customer to confirm availability before delivery.
+                          </div>
+                          {(role === "admin" || role === "sales") && (
+                            <button onClick={() => advanceItem(item.id)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                              <i className="ti ti-check" style={{ fontSize: 13 }} /> Customer confirmed — deliver now
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -809,6 +932,7 @@ function PaymentsTab({ order, role, onUpdate }) {
 
 export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onVendorClick, currentUser }) {
   const [tab, setTab] = useState("Order info");
+  const [showPrint, setShowPrint] = useState(false);
   const maxStageIdx = Math.max(...order.items.map(i => i.stageIndex));
   const channelColors = { Bangalore: "blue", Pune: "gray", Jodhpur: "teal", Website: "blue", Wholesale: "purple" };
 
@@ -816,7 +940,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
   const canSeePayments = role === "admin" || role === "sales" || role === "accountant";
   const canSeeVendors = role === "admin" || role === "qc";
 
-  const tabs = ["Order info", "Line items", "Order tracker", ...(canSeeVendors ? ["Vendors & production"] : []), ...(canSeePayments ? ["Payments"] : [])];
+  const tabs = ["Order info", "Line items", "Order tracker", ...(canSeeVendors ? ["Vendors & production"] : []), ...(canSeePayments ? ["Payments"] : []), ...(role === "admin" ? ["Costs"] : [])];
 
   return (
     <div>
@@ -833,10 +957,12 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
           <Btn><i className="ti ti-download" style={{ fontSize: 13 }} /> Export PO</Btn>
           <Btn variant="danger"><i className="ti ti-flag" style={{ fontSize: 13 }} /> Add flag</Btn>
         </div>
       </div>
+      {showPrint && <PrintView order={order} vendors={vendors} onClose={() => setShowPrint(false)} />}
       <div style={{ background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0", border: "0.5px solid var(--color-border-tertiary)", borderBottom: "none" }}>
         <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       </div>
@@ -846,6 +972,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
         {tab === "Order tracker" && <TrackerTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} currentUser={currentUser} />}
         {tab === "Vendors & production" && canSeeVendors && <VendorsTab order={order} vendors={vendors} role={role} onVendorClick={onVendorClick} />}
         {tab === "Payments" && canSeePayments && <PaymentsTab order={order} role={role} onUpdate={onUpdate} />}
+        {tab === "Costs" && role === "admin" && <CostApproval order={order} role={role} onUpdate={onUpdate} />}
       </div>
     </div>
   );

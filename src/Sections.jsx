@@ -701,6 +701,85 @@ export function Reports({ orders, role }) {
 
       <div style={{ height: 0.5, background: "var(--color-border-tertiary)", margin: "0 0 20px" }} />
       <SectionTitle>Export reports</SectionTitle>
+      {/* Dispatch Readiness Report */}
+      <div style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 3 }}>
+              <i className="ti ti-truck" style={{ fontSize: 15, marginRight: 6, color: "#C0392B" }} />Dispatch readiness report
+            </div>
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Packed vs non-packed items approaching delivery date</div>
+          </div>
+        </div>
+        {(() => {
+          const today = new Date();
+          const upcoming = orders.filter(o => {
+            const delivery = new Date(o.items[0]?.currentDelivery || "");
+            const diffDays = (delivery - today) / (1000 * 60 * 60 * 24);
+            return diffDays <= 14 && diffDays >= -2;
+          });
+          const packed = upcoming.filter(o => o.items.every(i => i.stageIndex >= 5));
+          const notPacked = upcoming.filter(o => o.items.some(i => i.stageIndex < 5));
+          return (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+                <div style={{ background: "var(--color-background-secondary)", borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Due within 14 days</div>
+                  <div style={{ fontSize: 20, fontWeight: 500 }}>{upcoming.length}</div>
+                </div>
+                <div style={{ background: "#EAF3DE", borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#27500A", marginBottom: 4 }}>Fully packed</div>
+                  <div style={{ fontSize: 20, fontWeight: 500, color: "#27500A" }}>{packed.length}</div>
+                </div>
+                <div style={{ background: "#FCEBEB", borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: "#791F1F", marginBottom: 4 }}>Not packed</div>
+                  <div style={{ fontSize: 20, fontWeight: 500, color: "#791F1F" }}>{notPacked.length}</div>
+                </div>
+              </div>
+              {upcoming.length > 0 ? (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "var(--color-background-secondary)" }}>
+                      {["Order ID", "Customer", "Channel", "Delivery date", "Items", "Status"].map(h => (
+                        <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 500, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {upcoming.sort((a, b) => (a.items[0]?.currentDelivery || "") > (b.items[0]?.currentDelivery || "") ? 1 : -1).map(o => {
+                      const allPacked = o.items.every(i => i.stageIndex >= 5);
+                      const packedCount = o.items.filter(i => i.stageIndex >= 5).length;
+                      const delivery = o.items[0]?.currentDelivery || "—";
+                      const diffDays = Math.ceil((new Date(delivery) - today) / (1000 * 60 * 60 * 24));
+                      return (
+                        <tr key={o.id} style={{ background: allPacked ? "#f9fdf5" : diffDays <= 3 ? "#fff5f5" : "transparent" }}>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500, color: "var(--color-text-info)" }}>{o.id}</td>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>{o.customer.name}</td>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.channel}</td>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: diffDays <= 3 ? 600 : 400, color: diffDays <= 3 ? "#791F1F" : "var(--color-text-primary)" }}>
+                            {delivery} {diffDays <= 0 ? "(overdue)" : diffDays <= 3 ? `(${diffDays}d)` : ""}
+                          </td>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.items.length}</td>
+                          <td style={{ padding: "8px 10px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                            {allPacked ? (
+                              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 7, background: "#EAF3DE", color: "#27500A", fontWeight: 500 }}>All packed</span>
+                            ) : (
+                              <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 7, background: "#FCEBEB", color: "#791F1F", fontWeight: 500 }}>{packedCount}/{o.items.length} packed</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ fontSize: 13, color: "var(--color-text-secondary)", padding: 12, textAlign: "center" }}>No orders due within 14 days.</div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
         {reportCards.map(rc => (
           <div key={rc.title} style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 16 }}>
