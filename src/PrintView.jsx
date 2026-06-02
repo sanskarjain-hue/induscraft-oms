@@ -237,9 +237,10 @@ function VendorPrint({ order, vendors }) {
               <>
                 <div className="section-title">Product Photos</div>
                 <div className="slip-img-row">
-                  {images.slice(0, 3).map((img, i) => (
-                    img.data ? <img key={i} src={img.data} alt={`Product ${i + 1}`} /> : null
-                  ))}
+                  {images.slice(0, 3).map((img, i) => {
+                    const src = img.url || img.data;
+                    return src ? <img key={i} src={src} alt={`Product ${i + 1}`} /> : null;
+                  })}
                 </div>
               </>
             )}
@@ -248,9 +249,10 @@ function VendorPrint({ order, vendors }) {
               <>
                 <div className="section-title">Measurement Drawing</div>
                 <div className="slip-img-row">
-                  {measurePhotos.slice(0, 2).map((img, i) => (
-                    img.data ? <img key={i} src={img.data} alt={`Measurement ${i + 1}`} /> : null
-                  ))}
+                  {measurePhotos.slice(0, 2).map((img, i) => {
+                    const src = img.url || img.data;
+                    return src ? <img key={i} src={src} alt={`Measurement ${i + 1}`} /> : null;
+                  })}
                 </div>
               </>
             )}

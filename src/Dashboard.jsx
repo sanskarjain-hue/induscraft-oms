@@ -93,6 +93,9 @@ export default function Dashboard({ orders, role, onOrderClick }) {
           </thead>
           <tbody>
             {filtered.map(o => {
+              // displayStageIdx = slowest item (min) — reflects true order progress
+              // maxStageIdx kept separately for overdue detection only
+              const displayStageIdx = Math.min(...o.items.map(i => i.stageIndex));
               const maxStageIdx = Math.max(...o.items.map(i => i.stageIndex));
               const latestDelivery = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
               const ds = delayStatus(o);
@@ -107,11 +110,12 @@ export default function Dashboard({ orders, role, onOrderClick }) {
                   <td style={{ padding: "8px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                     <div style={{ display: "flex", gap: 4 }}>
                       {o.items.slice(0, 3).map((item, idx) => {
-                        const firstImg = item.images && item.images.length > 0 && item.images[0].data ? item.images[0] : null;
+                        const firstImg = item.images && item.images.length > 0 ? item.images[0] : null;
+                        const imgSrc = firstImg ? (firstImg.url || firstImg.data) : null;
                         return (
                           <div key={idx} title={item.name} style={{ width: 32, height: 32, borderRadius: 6, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            {firstImg ? (
-                              <img src={firstImg.data} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            {imgSrc ? (
+                              <img src={imgSrc} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
                               <i className="ti ti-armchair" style={{ fontSize: 14, color: "var(--color-text-secondary)" }} />
                             )}
@@ -131,7 +135,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{formatCurrency(o.value)}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.salesperson}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-                    <Badge variant={stageVariant(maxStageIdx)}>{STAGES[maxStageIdx]}</Badge>
+                    <Badge variant={stageVariant(displayStageIdx)}>{STAGES[displayStageIdx]}</Badge>
                   </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontSize: 12, color: "var(--color-text-secondary)" }}>{latestDelivery}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontSize: 12 }}>
