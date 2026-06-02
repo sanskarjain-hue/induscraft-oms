@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ROLES } from "./data";
 import * as api from "./api";
+import { sampleOrders, sampleVendors, sampleServiceJobs, sampleReplacements } from "./sampleData"; // SAMPLE — remove when going live
 import Dashboard from "./Dashboard";
 import OrdersList from "./OrdersList";
 import OrderDetail from "./OrderDetail";
@@ -149,7 +150,18 @@ export default function App() {
     loadAllData();
   }, [currentUser]);
 
+  // ── SAMPLE DATA FLAG — set to false and remove sampleData import when going live ──
+  const USE_SAMPLE_DATA = true;
+
   async function loadAllData() {
+    if (USE_SAMPLE_DATA) {
+      setAllOrders(sampleOrders);
+      setAllVendors(sampleVendors);
+      setAllServiceJobs(sampleServiceJobs);
+      setAllReplacements(sampleReplacements);
+      return;
+    }
+    // ── end sample data block ──
     setLoading(true);
     setError(null);
     try {
