@@ -145,7 +145,8 @@ function PackingSlips({ order }) {
   return (
     <div>
       {slips.map(({ item, packetNum, totalPackets }, idx) => {
-        const firstImg = item.images && item.images.length > 0 && item.images[0].data ? item.images[0] : null;
+        const firstImg = item.images && item.images.length > 0 ? item.images[0] : null;
+        const imgSrc = firstImg ? (firstImg.url || firstImg.data) : null;
         return (
           <div key={idx} className={idx < slips.length - 1 ? "page-break" : ""} style={{ marginBottom: 40 }}>
             <div className="slip-header">
@@ -164,13 +165,13 @@ function PackingSlips({ order }) {
                 {item.qty > 1 && <tr><td>Qty</td><td>{item.qty}</td></tr>}
               </tbody>
             </table>
-            {firstImg && (
+            {imgSrc && (
               <div style={{ textAlign: "center" }}>
-                <img src={firstImg.data} alt={item.name} className="slip-img" />
+                <img src={imgSrc} alt={item.name} className="slip-img" />
                 <div style={{ fontSize: 10, color: "#888" }}>Picture</div>
               </div>
             )}
-            {!firstImg && (
+            {!imgSrc && (
               <div style={{ border: "0.5px solid #ccc", height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "#aaa", fontSize: 12, marginBottom: 8 }}>
                 No product photo uploaded
               </div>
