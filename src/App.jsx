@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { ROLES } from "./data";
 import * as api from "./api";
-import { sampleOrders, sampleVendors, sampleServiceJobs, sampleReplacements } from "./sampleData"; // SAMPLE — remove when going live
 import Dashboard from "./Dashboard";
 import OrdersList from "./OrdersList";
 import OrderDetail from "./OrderDetail";
@@ -9,6 +8,7 @@ import VendorsSection from "./VendorsSection";
 import AfterSales from "./AfterSales";
 import Reports from "./Reports";
 import PastOrders from "./PastOrders";
+import Settings from "./Settings";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-home" },
@@ -17,6 +17,7 @@ const NAV = [
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
   { id: "reports", label: "Reports", icon: "ti-chart-bar" },
   { id: "pastorders", label: "Past Orders", icon: "ti-archive" },
+  { id: "settings", label: "Settings", icon: "ti-settings" },
 ];
 
 const themeCSS = `
@@ -152,18 +153,7 @@ export default function App() {
     loadAllData();
   }, [currentUser]);
 
-  // ── SAMPLE DATA FLAG — set to false and remove sampleData import when going live ──
-  const USE_SAMPLE_DATA = true;
-
   async function loadAllData() {
-    if (USE_SAMPLE_DATA) {
-      setAllOrders(sampleOrders);
-      setAllVendors(sampleVendors);
-      setAllServiceJobs(sampleServiceJobs);
-      setAllReplacements(sampleReplacements);
-      return;
-    }
-    // ── end sample data block ──
     setLoading(true);
     setError(null);
     try {
@@ -327,6 +317,7 @@ export default function App() {
             )}
             {page === "reports" && <Reports orders={allOrders} role={role} />}
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={handleUpdateOrder} />}
+            {page === "settings" && role === "admin" && <Settings />}
           </main>
         </>
       )}

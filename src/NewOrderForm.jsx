@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { CHANNELS, STAGES } from "./data";
+import { fetchNextOrderId } from "./api";
 import { formatCurrency } from "./ui";
 
 const CHANNEL_PREFIXES = {
@@ -147,19 +148,21 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const STEPS = ["Channel & basics", "Customer", "Line items", "Delivery & notes"];
   const TOTAL_STEPS = 4;
 
-  function generateOrderId(ch) {
-    const prefix = CHANNEL_PREFIXES[ch || channel] || "XX";
-    const existing = (existingOrders || [])
-      .filter(o => o.id.startsWith(prefix))
-      .map(o => parseInt(o.id.replace(prefix + "-", "") || "0"))
-      .filter(n => !isNaN(n));
-    const max = existing.length > 0 ? Math.max(...existing) : 0;
-    return `${prefix}-${String(max + 1).padStart(4, "0")}`;
-  }
-
-  function handleChannelChange(c) {
+  async function handleChannelChange(c) {
     setChannel(c);
-    setCustomOrderId(generateOrderId(c));
+    try {
+      const { id } = await fetchNextOrderId(c);
+      setCustomOrderId(id);
+    } catch {
+      // fallback: generate locally if API fails
+      const prefix = CHANNEL_PREFIXES[c] || "XX";
+      const existing = (existingOrders || [])
+        .filter(o => o.id.startsWith(prefix))
+        .map(o => parseInt(o.id.replace(prefix + "-", "")) || 0)
+        .filter(n => !isNaN(n));
+      const max = existing.length > 0 ? Math.max(...existing) : 0;
+      setCustomOrderId(`${prefix}-${String(max + 1).padStart(4, "0")}`);
+    }
   }
 
   function validateStep(s) {
@@ -225,7 +228,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
 
   function handleSave() {
     if (!validateStep(5)) return;
-    const orderId = customOrderId || generateOrderId();
+    const orderId = customOrderId;
     const totalValue = items.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
     const newOrder = {
       id: orderId,

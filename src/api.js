@@ -49,6 +49,13 @@ async function apiFetch(path, options = {}) {
 }
 
 // ── AUTH ──────────────────────────────────────────────────
+export async function changePassword(username, newPassword) {
+  return apiFetch("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ username, newPassword }),
+  });
+}
+
 export async function login(username, password) {
   const data = await apiFetch("/auth/login", {
     method: "POST",
@@ -64,6 +71,10 @@ export function logout() {
 }
 
 // ── ORDERS ────────────────────────────────────────────────
+export async function fetchNextOrderId(channel) {
+  return apiFetch(`/orders/next-id?channel=${encodeURIComponent(channel)}`);
+}
+
 export async function fetchOrders(channel) {
   const params = channel ? `?channel=${channel}` : "";
   return apiFetch(`/orders${params}`);
