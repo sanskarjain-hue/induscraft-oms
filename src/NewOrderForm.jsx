@@ -128,7 +128,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [channel, setChannel] = useState("");
   const [customOrderId, setCustomOrderId] = useState("");
   const [salesperson, setSalesperson] = useState(currentUser?.name || "");
-  const [date] = useState(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }));
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]); // stored as YYYY-MM-DD, displayed as-is
 
   // Step 2 — Customer
   const [custName, setCustName] = useState("");
@@ -171,7 +171,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
     if (s === 2) {
       if (!custName.trim()) e.custName = "Customer name required";
       if (!custPhone.trim()) e.custPhone = "Phone number required";
-      if (!custAddress.trim()) e.custAddress = "Address required";
+      // address is optional — can be added later from order detail
     }
     if (s === 3) {
       items.forEach((item, idx) => {
@@ -335,7 +335,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
               </Field>
 
               <Field label="Order date">
-                <input value={date} readOnly style={{ ...INPUT, background: "#f5f5f3", color: "#666660" }} />
+                <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                  style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} />
               </Field>
 
               {channel && (
@@ -368,10 +369,10 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                   style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} placeholder="+91 XXXXX XXXXX" />
                 {errors.custPhone && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.custPhone}</div>}
               </Field>
-              <Field label="Address *">
+              <Field label="Address (optional)">
                 <textarea value={custAddress} onChange={e => setCustAddress(e.target.value)}
                   style={{ ...INPUT, minHeight: 80, resize: "vertical", background: "#f5f5f3", color: "#1a1a1a" }} placeholder="Full delivery address" />
-                {errors.custAddress && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.custAddress}</div>}
+
               </Field>
             </div>
           )}

@@ -2,12 +2,24 @@ import { useState } from "react";
 import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, MiniPipeline, formatCurrency } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 
+const isNew = o => !o.deliveryConfirmed && o.items.every(i => i.stageIndex === 0);
+
+const isPast = o => {
+  if (!o.items.every(i => i.stageIndex === 8)) return false;
+  const latest = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
+  if (!latest) return false;
+  const diff = (new Date() - new Date(latest)) / (1000 * 60 * 60 * 24);
+  return diff >= 10;
+};
+
 export default function Dashboard({ orders, role, onOrderClick }) {
   const [channelFilter, setChannelFilter] = useState("All");
   const [stageFilter, setStageFilter] = useState("All");
   const [search, setSearch] = useState("");
 
-  const filtered = orders.filter(o => {
+  const activeOrders = orders.filter(o => o.status !== 'archived' && !isPast(o));
+
+  const filtered = activeOrders.filter(o => {
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;
     if (role === "sales" && o.salesperson !== "Kishore" && o.salesperson !== "Ramesh" && o.salesperson !== "Sanskar") {
       // sales sees all but can only edit their own
@@ -18,12 +30,12 @@ export default function Dashboard({ orders, role, onOrderClick }) {
     return true;
   });
 
-  const total = orders.length;
-  const pending = orders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) < 2).length;
-  const inProd = orders.filter(o => { const s = Math.max(...o.items.map(i => i.stageIndex)); return s >= 2 && s < 6; }).length;
-  const dispatched = orders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) === 6).length;
-  const completed = orders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) === 8).length;
-  const overdue = orders.filter(o => delayStatus(o) === "overdue").length;
+  const total = activeOrders.length;
+  const pending = activeOrders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) < 2).length;
+  const inProd = activeOrders.filter(o => { const s = Math.max(...o.items.map(i => i.stageIndex)); return s >= 2 && s < 6; }).length;
+  const dispatched = activeOrders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) === 6).length;
+  const completed = activeOrders.filter(o => Math.max(...o.items.map(i => i.stageIndex)) === 8).length;
+  const overdue = activeOrders.filter(o => delayStatus(o) === "overdue").length;
 
   const stats = [
     { label: "Total orders", value: total, color: "var(--color-text-primary)" },
@@ -86,7 +98,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "var(--color-background-secondary)" }}>
-              {["Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Exp. delivery", "Status"].map(h => (
+              {["", "Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Exp. delivery", "Status"].map(h => (
                 <th key={h} style={{ textAlign: "left", fontSize: 11, color: "var(--color-text-secondary)", padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
@@ -99,11 +111,15 @@ export default function Dashboard({ orders, role, onOrderClick }) {
               const maxStageIdx = Math.max(...o.items.map(i => i.stageIndex));
               const latestDelivery = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
               const ds = delayStatus(o);
+              const orderIsNew = isNew(o);
               return (
                 <tr key={o.id} onClick={() => onOrderClick(o.id)}
-                  style={{ cursor: "pointer", background: ds === "overdue" ? "#FCEBEB" : "transparent" }}
-                  onMouseEnter={e => e.currentTarget.style.background = ds === "overdue" ? "#f8d7d7" : "var(--color-background-secondary)"}
-                  onMouseLeave={e => e.currentTarget.style.background = ds === "overdue" ? "#FCEBEB" : "transparent"}>
+                  style={{ cursor: "pointer", background: ds === "overdue" ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent" }}
+                  onMouseEnter={e => e.currentTarget.style.background = ds === "overdue" ? "#f8d7d7" : orderIsNew ? "#e4f5e4" : "var(--color-background-secondary)"}
+                  onMouseLeave={e => e.currentTarget.style.background = ds === "overdue" ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent"}>
+                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", width: 48 }}>
+                    {orderIsNew && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 5, background: "#27500A", color: "white", fontWeight: 600, letterSpacing: "0.3px" }}>NEW</span>}
+                  </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500, color: ds === "overdue" ? "#791F1F" : "var(--color-text-info)" }}>{o.id}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.date}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>{o.customer.name}</td>

@@ -38,12 +38,21 @@ function OrderInfoTab({ order, role, onUpdate }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card>
           <SectionTitle>Customer</SectionTitle>
-          {[["Name", order.customer.name], ["Phone", order.customer.phone], ["Address", order.customer.address]].map(([l, v]) => (
+          {[["Name", order.customer.name], ["Phone", order.customer.phone]].map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{l}</span>
               <span style={{ fontSize: 13, fontWeight: 500, textAlign: "right", maxWidth: 200 }}>{v}</span>
             </div>
           ))}
+          <div style={{ padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>Address</div>
+            <textarea
+              defaultValue={order.customer.address || ""}
+              onBlur={e => onUpdate({ ...order, customer: { ...order.customer, address: e.target.value } })}
+              placeholder="Click to add address..."
+              style={{ width: "100%", fontSize: 12, padding: "6px 8px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", resize: "vertical", fontFamily: "inherit", minHeight: 56 }}
+            />
+          </div>
         </Card>
         <Card>
           <SectionTitle>Order summary</SectionTitle>
@@ -1001,9 +1010,94 @@ function PaymentsTab({ order, role, onUpdate }) {
   );
 }
 
+// ── EDIT ORDER MODAL ──────────────────────────────────────
+function EditOrderModal({ order, onSave, onClose }) {
+  const [form, setForm] = useState({
+    channel: order.channel || "",
+    salesperson: order.salesperson || "",
+    date: order.date || "",
+    value: order.value || "",
+    notes: order.notes || "",
+    custName: order.customer?.name || "",
+    custPhone: order.customer?.phone || "",
+    custAddress: order.customer?.address || "",
+  });
+
+  function save() {
+    onSave({
+      ...order,
+      channel: form.channel,
+      salesperson: form.salesperson,
+      date: form.date,
+      value: parseFloat(form.value) || order.value,
+      notes: form.notes,
+      customer: { name: form.custName, phone: form.custPhone, address: form.custAddress },
+    });
+  }
+
+  const INPUT = { width: "100%", fontSize: 13, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" };
+  const LABEL = { fontSize: 11, color: "var(--color-text-secondary)", display: "block", marginBottom: 5, fontWeight: 500 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ padding: "18px 24px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Edit order — {order.id}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 20 }}><i className="ti ti-x" /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><label style={LABEL}>Channel</label>
+              <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))} style={INPUT}>
+                {["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div><label style={LABEL}>Order date</label>
+              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={INPUT} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><label style={LABEL}>Salesperson</label>
+              <input value={form.salesperson} onChange={e => setForm(f => ({ ...f, salesperson: e.target.value }))} style={INPUT} />
+            </div>
+            <div><label style={LABEL}>Order value (₹)</label>
+              <input type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} style={INPUT} />
+            </div>
+          </div>
+          <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px" }}>Customer</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={LABEL}>Name</label>
+                <input value={form.custName} onChange={e => setForm(f => ({ ...f, custName: e.target.value }))} style={INPUT} />
+              </div>
+              <div><label style={LABEL}>Phone</label>
+                <input value={form.custPhone} onChange={e => setForm(f => ({ ...f, custPhone: e.target.value }))} style={INPUT} />
+              </div>
+            </div>
+            <div><label style={LABEL}>Address</label>
+              <textarea value={form.custAddress} onChange={e => setForm(f => ({ ...f, custAddress: e.target.value }))}
+                style={{ ...INPUT, minHeight: 70, resize: "vertical" }} placeholder="Delivery address" />
+            </div>
+          </div>
+          <div><label style={LABEL}>Internal notes</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              style={{ ...INPUT, minHeight: 70, resize: "vertical" }} />
+          </div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: "0.5px solid var(--color-border-tertiary)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button onClick={save} style={{ fontSize: 13, padding: "8px 22px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontWeight: 500, fontFamily: "inherit" }}>Save changes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onVendorClick, currentUser }) {
   const [tab, setTab] = useState("Order info");
   const [showPrint, setShowPrint] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const maxStageIdx = Math.max(...order.items.map(i => i.stageIndex));
   const channelColors = { Bangalore: "blue", Pune: "gray", Jodhpur: "teal", Website: "blue", Wholesale: "purple" };
 
@@ -1029,11 +1123,28 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
+          {role === "admin" && <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>}
+          {role === "admin" && <Btn variant="danger" onClick={() => setShowArchiveConfirm(true)}><i className="ti ti-archive" style={{ fontSize: 13 }} /> Archive</Btn>}
           <Btn><i className="ti ti-download" style={{ fontSize: 13 }} /> Export PO</Btn>
           <Btn variant="danger"><i className="ti ti-flag" style={{ fontSize: 13 }} /> Add flag</Btn>
         </div>
       </div>
       {showPrint && <PrintView order={order} vendors={vendors} onClose={() => setShowPrint(false)} />}
+      {showEdit && <EditOrderModal order={order} onSave={updated => { onUpdate(updated); setShowEdit(false); }} onClose={() => setShowEdit(false)} />}
+      {showArchiveConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--color-background-primary)", borderRadius: 14, padding: 28, width: 380, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Archive this order?</div>
+            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 20 }}>
+              The order will be removed from the active dashboard and moved to Past Orders. This can be undone.
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowArchiveConfirm(false)} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              <button onClick={() => { onUpdate({ ...order, status: "archived" }); setShowArchiveConfirm(false); onBack(); }} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0", border: "0.5px solid var(--color-border-tertiary)", borderBottom: "none" }}>
         <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       </div>

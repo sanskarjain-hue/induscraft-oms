@@ -69,6 +69,11 @@ export async function fetchOrders(channel) {
   return apiFetch(`/orders${params}`);
 }
 
+export async function fetchAllOrders() {
+  // includes archived — used for Past Orders page
+  return apiFetch("/orders?includeArchived=true");
+}
+
 export async function fetchOrder(id) {
   return apiFetch(`/orders/${id}`);
 }

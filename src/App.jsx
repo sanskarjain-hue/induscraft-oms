@@ -8,6 +8,7 @@ import OrderDetail from "./OrderDetail";
 import VendorsSection from "./VendorsSection";
 import AfterSales from "./AfterSales";
 import Reports from "./Reports";
+import PastOrders from "./PastOrders";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-home" },
@@ -15,6 +16,7 @@ const NAV = [
   { id: "vendors", label: "Vendors", icon: "ti-users" },
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
   { id: "reports", label: "Reports", icon: "ti-chart-bar" },
+  { id: "pastorders", label: "Past Orders", icon: "ti-archive" },
 ];
 
 const themeCSS = `
@@ -166,7 +168,7 @@ export default function App() {
     setError(null);
     try {
       const [orders, vendors, jobs, replacements] = await Promise.all([
-        api.fetchOrders(),
+        api.fetchAllOrders(), // fetch all including archived for Past Orders page
         api.fetchVendors(),
         api.fetchServiceJobs(),
         api.fetchReplacements(),
@@ -324,6 +326,7 @@ export default function App() {
                 onOrderClick={(id) => navigate("orders", id)} />
             )}
             {page === "reports" && <Reports orders={allOrders} role={role} />}
+            {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={handleUpdateOrder} />}
           </main>
         </>
       )}

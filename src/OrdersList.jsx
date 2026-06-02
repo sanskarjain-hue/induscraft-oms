@@ -3,12 +3,23 @@ import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurre
 import { STAGES, CHANNELS } from "./data";
 import NewOrderForm from "./NewOrderForm";
 
+const isNew = o => !o.deliveryConfirmed && o.items.every(i => i.stageIndex === 0);
+
+const isPast = o => {
+  if (!o.items.every(i => i.stageIndex === 8)) return false;
+  const latest = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
+  if (!latest) return false;
+  return (new Date() - new Date(latest)) / (1000 * 60 * 60 * 24) >= 10;
+};
+
 export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder }) {
   const [channelFilter, setChannelFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
 
-  const filtered = orders.filter(o => {
+  const activeOrders = orders.filter(o => o.status !== 'archived' && !isPast(o));
+
+  const filtered = activeOrders.filter(o => {
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;
     if (search && !o.customer.name.toLowerCase().includes(search.toLowerCase()) && !o.id.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -58,7 +69,7 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "var(--color-background-secondary)" }}>
-              {["Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Status"].map(h => (
+              {["", "Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Status"].map(h => (
                 <th key={h} style={{ textAlign: "left", fontSize: 11, color: "var(--color-text-secondary)", padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
@@ -72,9 +83,12 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
               const ds = delayStatus(o);
               return (
                 <tr key={o.id} onClick={() => onOrderClick(o.id)}
-                  style={{ cursor: "pointer", background: ds === "overdue" ? "#FCEBEB" : "transparent" }}
-                  onMouseEnter={e => e.currentTarget.style.background = ds === "overdue" ? "#f8d7d7" : "var(--color-background-secondary)"}
-                  onMouseLeave={e => e.currentTarget.style.background = ds === "overdue" ? "#FCEBEB" : "transparent"}>
+                  style={{ cursor: "pointer", background: ds === "overdue" ? "#FCEBEB" : isNew(o) ? "#F0FAF0" : "transparent" }}
+                  onMouseEnter={e => e.currentTarget.style.background = ds === "overdue" ? "#f8d7d7" : isNew(o) ? "#e4f5e4" : "var(--color-background-secondary)"}
+                  onMouseLeave={e => e.currentTarget.style.background = ds === "overdue" ? "#FCEBEB" : isNew(o) ? "#F0FAF0" : "transparent"}>
+                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", width: 48 }}>
+                    {isNew(o) && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 5, background: "#27500A", color: "white", fontWeight: 600, letterSpacing: "0.3px" }}>NEW</span>}
+                  </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500, color: "var(--color-text-info)" }}>{o.id}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.date}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>{o.customer.name}</td>
