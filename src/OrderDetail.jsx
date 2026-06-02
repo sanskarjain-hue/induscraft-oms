@@ -387,6 +387,57 @@ function LineItemsTab({ order, role, vendors, onUpdate }) {
   );
 }
 
+// Reusable photo strip — upload + view + download, visible to all roles
+function StagePhotoStrip({ photos, label, canUpload, onUpload }) {
+  function handleFiles(e) {
+    Array.from(e.target.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const updated = [...photos, { name: file.name, type: file.type, data: ev.target.result }];
+        onUpload(updated);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  }
+
+  if (!canUpload && photos.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {photos.map((photo, pi) => {
+          const src = photo.url || photo.data;
+          return (
+            <div key={pi} style={{ position: "relative", width: 64, height: 64 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)" }}>
+                {src
+                  ? <img src={src} alt={photo.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-photo" style={{ fontSize: 18, color: "var(--color-text-secondary)" }} /></div>
+                }
+              </div>
+              {src && (
+                <a href={src} download={photo.name || "photo"} title="Download"
+                  style={{ position: "absolute", bottom: 2, right: 2, width: 18, height: 18, borderRadius: 4, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                  <i className="ti ti-download" style={{ fontSize: 11, color: "white" }} />
+                </a>
+              )}
+            </div>
+          );
+        })}
+        {canUpload && (
+          <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3, flexShrink: 0 }}>
+            <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
+            <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
+            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
   const [delayModal, setDelayModal] = useState(null);
   const [qcState, setQcState] = useState({}); // itemId -> {notes, status}
@@ -609,7 +660,20 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         </div>
                       )}
 
-                      {isDone && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Completed</div>}
+                      {isDone && (
+                        <div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Completed</div>
+                          {stageName === "Raw ready" && (item.rawPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.rawPhotos} label="Raw product photos" canUpload={false} />
+                          )}
+                          {stageName === "Finishing" && (item.finishingPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.finishingPhotos} label="In-progress photos" canUpload={false} />
+                          )}
+                          {stageName === "QC" && (item.qcPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.qcPhotos} label="QC inspection photos" canUpload={false} />
+                          )}
+                        </div>
+                      )}
 
                       {isActive && stageName === "Processing started" && vendor && (
                         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "8px 10px", borderRadius: 8, marginTop: 4 }}>
@@ -632,6 +696,14 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               </div>
                             );
                           })}
+                          <StagePhotoStrip
+                            photos={item.finishingPhotos || []}
+                            label="In-progress photos"
+                            canUpload={role === "admin" || role === "qc"}
+                            onUpload={newPhotos => {
+                              onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, finishingPhotos: newPhotos } : i) });
+                            }}
+                          />
                         </div>
                       )}
 
@@ -662,15 +734,14 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>QC submitted.</div>
                           )}
 
-                          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", margin: "12px 0 8px" }}>QC photos & videos</div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            {(role === "admin" || role === "qc") && (
-                              <div style={{ width: 56, height: 56, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer" }}>
-                                <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
-                                <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
-                              </div>
-                            )}
-                          </div>
+                          <StagePhotoStrip
+                            photos={item.qcPhotos || []}
+                            label="QC inspection photos"
+                            canUpload={role === "admin" || role === "qc"}
+                            onUpload={newPhotos => {
+                              onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, qcPhotos: newPhotos } : i) });
+                            }}
+                          />
                         </div>
                       )}
 
