@@ -130,10 +130,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [salesperson, setSalesperson] = useState(currentUser?.name || "");
   const [date] = useState(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }));
 
-  // Step 2 — Order sheet upload
-  const [orderSheetFiles, setOrderSheetFiles] = useState([]);
-
-  // Step 3 — Customer
+  // Step 2 — Customer
   const [custName, setCustName] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [custAddress, setCustAddress] = useState("");
@@ -147,8 +144,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
 
   const [errors, setErrors] = useState({});
 
-  const STEPS = ["Channel & basics", "Order sheet", "Customer", "Line items", "Delivery & notes"];
-  const TOTAL_STEPS = 5;
+  const STEPS = ["Channel & basics", "Customer", "Line items", "Delivery & notes"];
+  const TOTAL_STEPS = 4;
 
   function generateOrderId(ch) {
     const prefix = CHANNEL_PREFIXES[ch || channel] || "XX";
@@ -171,19 +168,19 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       if (!channel) e.channel = "Select a channel";
       if (!salesperson.trim()) e.salesperson = "Enter salesperson name";
     }
-    if (s === 3) {
+    if (s === 2) {
       if (!custName.trim()) e.custName = "Customer name required";
       if (!custPhone.trim()) e.custPhone = "Phone number required";
       if (!custAddress.trim()) e.custAddress = "Address required";
     }
-    if (s === 4) {
+    if (s === 3) {
       items.forEach((item, idx) => {
         if (!item.name.trim()) e[`item_${idx}_name`] = "Item name required";
         if (!item.price || isNaN(item.price)) e[`item_${idx}_price`] = "Valid price required";
         if (!item.wood.trim()) e[`item_${idx}_wood`] = "Wood type required";
       });
     }
-    if (s === 5) {
+    if (s === 4) {
       if (!originalDelivery) e.originalDelivery = "Delivery date required";
     }
     setErrors(e);
@@ -235,7 +232,6 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       channel,
       date,
       salesperson,
-      orderSheetFiles,
       customer: { name: custName, phone: custPhone, address: custAddress },
       value: totalValue,
       advance: 0,
@@ -359,29 +355,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
             </div>
           )}
 
-          {/* STEP 2 — Order sheet upload */}
+          {/* STEP 2 — Customer */}
           {step === 2 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ fontSize: 13, color: "#666660", marginBottom: 4 }}>
-                Upload the order sheet from the customer. This will be attached to the order and sent with vendor POs.
-              </div>
-              <FileUploadArea
-                label="Order sheet (PDF)"
-                accept=".pdf"
-                multiple={false}
-                files={orderSheetFiles}
-                onAdd={setOrderSheetFiles}
-                hint="PDF up to 20MB"
-              />
-              <div style={{ padding: "12px 14px", background: "#f5f5f3", borderRadius: 8, fontSize: 12, color: "#666660", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <i className="ti ti-info-circle" style={{ fontSize: 14, marginTop: 1, flexShrink: 0 }} />
-                <span>You can skip this step if you don't have the order sheet yet. It can be added later from the Order info tab.</span>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3 — Customer */}
-          {step === 3 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Field label="Customer name *">
                 <input value={custName} onChange={e => setCustName(e.target.value)}
@@ -401,8 +376,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
             </div>
           )}
 
-          {/* STEP 4 — Line items */}
-          {step === 4 && (
+          {/* STEP 3 — Line items */}
+          {step === 3 && (
             <div>
               {items.map((item, idx) => (
                 <div key={item._id} style={{ border: "0.5px solid #e5e5e0", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
@@ -518,8 +493,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
             </div>
           )}
 
-          {/* STEP 5 — Delivery & notes */}
-          {step === 5 && (
+          {/* STEP 4 — Delivery & notes */}
+          {step === 4 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Field label="Recommended delivery date *">
                 <input type="date" value={originalDelivery} onChange={e => setOriginalDelivery(e.target.value)}
@@ -548,7 +523,6 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                   ["Items", items.length],
                   ["Total value", formatCurrency(totalValue)],
                   ["Expected delivery", originalDelivery || "—"],
-                  ["Order sheet", orderSheetFiles.length > 0 ? orderSheetFiles[0] : "Not uploaded"],
                 ].map(([l, v]) => (
                   <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0", borderBottom: "0.5px solid #e5e5e0" }}>
                     <span style={{ color: "#666660" }}>{l}</span>

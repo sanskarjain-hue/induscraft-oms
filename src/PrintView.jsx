@@ -391,6 +391,135 @@ function QCPrint({ order, vendors }) {
   );
 }
 
+// ── CUSTOMER COPY ─────────────────────────────────────────
+function CustomerCopy({ order }) {
+  const header = CHANNEL_HEADERS[order.channel] || "INDUSCRAFT";
+  const totalPaid = (order.payments || []).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const balance = (order.value || 0) - totalPaid;
+  const maxDelivery = order.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="slip-header">
+        <div className="slip-title">{header}</div>
+        <div style={{ fontSize: 11, color: "#555" }}>Order Confirmation</div>
+      </div>
+
+      {/* Order meta */}
+      <div className="section-title">Order Details</div>
+      <table className="slip-table">
+        <tbody>
+          <tr><td>Order No</td><td style={{ fontWeight: 700 }}>{order.id}</td></tr>
+          <tr><td>Order Date</td><td>{order.date}</td></tr>
+          <tr><td>Expected Delivery</td><td style={{ fontWeight: 700, color: "#C0392B" }}>{maxDelivery || "—"}</td></tr>
+          <tr><td>Salesperson</td><td>{order.salesperson}</td></tr>
+        </tbody>
+      </table>
+
+      {/* Customer */}
+      <div className="section-title">Customer Details</div>
+      <table className="slip-table">
+        <tbody>
+          <tr><td>Name</td><td>{order.customer.name}</td></tr>
+          <tr><td>Phone</td><td>{order.customer.phone}</td></tr>
+          <tr><td>Delivery Address</td><td>{order.customer.address}</td></tr>
+        </tbody>
+      </table>
+
+      {/* Items */}
+      <div className="section-title">Items Ordered</div>
+      {order.items.map((item, idx) => {
+        const images = item.images || [];
+        const measurePhotos = item.measurementPhotos || [];
+        return (
+          <div key={idx} style={{ marginBottom: 20, paddingBottom: 16, borderBottom: idx < order.items.length - 1 ? "0.5px solid #ddd" : "none" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+              {idx + 1}. {item.name} {item.qty > 1 ? `× ${item.qty}` : ""}
+            </div>
+            <table className="slip-table" style={{ marginBottom: 8 }}>
+              <tbody>
+                <tr><td>Wood</td><td>{item.wood}{item.woodColour ? ` — ${item.woodColour}` : ""}</td></tr>
+                {item.fabricCode && <tr><td>Fabric Code</td><td>{item.fabricCode}</td></tr>}
+                {item.finishingSteps && item.finishingSteps.length > 0 && (
+                  <tr><td>Finishing</td><td>{item.finishingSteps.join(", ")}</td></tr>
+                )}
+                {item.remarks && <tr><td>Remarks</td><td>{item.remarks}</td></tr>}
+                <tr><td>Price</td><td style={{ fontWeight: 600 }}>₹{(item.price || 0).toLocaleString("en-IN")}</td></tr>
+              </tbody>
+            </table>
+
+            {/* Product images */}
+            {images.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#555", marginBottom: 6 }}>Reference Photos</div>
+                <div className="slip-img-row">
+                  {images.slice(0, 3).map((img, i) => {
+                    const src = img.url || img.data;
+                    return src ? <img key={i} src={src} alt={`Product ${i + 1}`} /> : null;
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Measurement photos */}
+            {measurePhotos.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#555", marginBottom: 6 }}>Measurement Drawing</div>
+                <div className="slip-img-row">
+                  {measurePhotos.slice(0, 2).map((img, i) => {
+                    const src = img.url || img.data;
+                    return src ? <img key={i} src={src} alt={`Measurement ${i + 1}`} /> : null;
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Payment summary */}
+      <div className="section-title">Payment Summary</div>
+      <table className="slip-table">
+        <tbody>
+          <tr><td>Total Order Value</td><td style={{ fontWeight: 700, fontSize: 15 }}>₹{(order.value || 0).toLocaleString("en-IN")}</td></tr>
+          <tr><td>Advance Paid</td><td style={{ color: "#27500A", fontWeight: 600 }}>₹{totalPaid.toLocaleString("en-IN")}</td></tr>
+          <tr><td>Balance Due</td><td style={{ color: balance > 0 ? "#C0392B" : "#27500A", fontWeight: 700, fontSize: 14 }}>₹{balance.toLocaleString("en-IN")}</td></tr>
+        </tbody>
+      </table>
+
+      {/* Payment log */}
+      {order.payments && order.payments.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#555", margin: "10px 0 6px" }}>Payment History</div>
+          <table className="slip-table">
+            <tbody>
+              {order.payments.map((p, i) => (
+                <tr key={i}>
+                  <td>{p.date}</td>
+                  <td>{p.mode}</td>
+                  <td style={{ fontWeight: 500 }}>₹{(p.amount || 0).toLocaleString("en-IN")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {/* Footer note */}
+      <div style={{ marginTop: 24, padding: "10px 12px", background: "#f9f9f9", border: "0.5px solid #ddd", borderRadius: 6, fontSize: 11, color: "#777" }}>
+        This is an order confirmation document, not a tax invoice. A GST invoice will be issued at the time of delivery.
+        All furniture is handcrafted in Jodhpur — minor natural wood variations are not defects.
+      </div>
+
+      <div style={{ marginTop: 16, borderTop: "1px solid #ccc", paddingTop: 10, fontSize: 11, color: "#555", display: "flex", justifyContent: "space-between" }}>
+        <span>Induscraft — {header}</span>
+        <span>{new Date().toLocaleDateString("en-GB")}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN PRINT VIEW ───────────────────────────────────────
 export default function PrintView({ order, vendors, onClose }) {
   const [printType, setPrintType] = useState("packing");
@@ -410,6 +539,7 @@ export default function PrintView({ order, vendors, onClose }) {
           { id: "packing", label: "Packing Slip" },
           { id: "vendor", label: "Vendor Print" },
           { id: "qc", label: "QC Sheet" },
+          { id: "customer", label: "Customer Copy" },
         ].map(t => (
           <button key={t.id} onClick={() => setPrintType(t.id)} style={{
             fontSize: 12, padding: "6px 14px", borderRadius: 7, cursor: "pointer",
@@ -433,6 +563,7 @@ export default function PrintView({ order, vendors, onClose }) {
           {printType === "packing" && <PackingSlips order={order} />}
           {printType === "vendor" && <VendorPrint order={order} vendors={vendors} />}
           {printType === "qc" && <QCPrint order={order} vendors={vendors} />}
+          {printType === "customer" && <CustomerCopy order={order} />}
         </div>
       </div>
     </div>
