@@ -1053,7 +1053,7 @@ function EditOrderModal({ order, onSave, onClose }) {
               <label style={LABEL}>Order ID</label>
               <input value={form.orderId} onChange={e => setForm(f => ({ ...f, orderId: e.target.value }))} style={INPUT} />
               <div style={{ fontSize: 10, color: "#BA7517", marginTop: 4 }}>
-                ⚠ Temporary — for importing old orders only
+                Temporary — for importing old orders only
               </div>
             </div>
             <div><label style={LABEL}>Channel</label>
