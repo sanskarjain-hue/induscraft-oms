@@ -38,21 +38,12 @@ function OrderInfoTab({ order, role, onUpdate }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card>
           <SectionTitle>Customer</SectionTitle>
-          {[["Name", order.customer.name], ["Phone", order.customer.phone]].map(([l, v]) => (
+          {[["Name", order.customer.name], ["Phone", order.customer.phone], ["Address", order.customer.address]].map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{l}</span>
               <span style={{ fontSize: 13, fontWeight: 500, textAlign: "right", maxWidth: 200 }}>{v}</span>
             </div>
           ))}
-          <div style={{ padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>Address</div>
-            <textarea
-              defaultValue={order.customer.address || ""}
-              onBlur={e => onUpdate({ ...order, customer: { ...order.customer, address: e.target.value } })}
-              placeholder="Click to add address..."
-              style={{ width: "100%", fontSize: 12, padding: "6px 8px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", resize: "vertical", fontFamily: "inherit", minHeight: 56 }}
-            />
-          </div>
         </Card>
         <Card>
           <SectionTitle>Order summary</SectionTitle>
@@ -396,57 +387,6 @@ function LineItemsTab({ order, role, vendors, onUpdate }) {
   );
 }
 
-// Reusable photo strip — upload + view + download, visible to all roles
-function StagePhotoStrip({ photos, label, canUpload, onUpload }) {
-  function handleFiles(e) {
-    Array.from(e.target.files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const updated = [...photos, { name: file.name, type: file.type, data: ev.target.result }];
-        onUpload(updated);
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = "";
-  }
-
-  if (!canUpload && photos.length === 0) return null;
-
-  return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>{label}</div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {photos.map((photo, pi) => {
-          const src = photo.url || photo.data;
-          return (
-            <div key={pi} style={{ position: "relative", width: 64, height: 64 }}>
-              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)" }}>
-                {src
-                  ? <img src={src} alt={photo.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  : <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-photo" style={{ fontSize: 18, color: "var(--color-text-secondary)" }} /></div>
-                }
-              </div>
-              {src && (
-                <a href={src} download={photo.name || "photo"} title="Download"
-                  style={{ position: "absolute", bottom: 2, right: 2, width: 18, height: 18, borderRadius: 4, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
-                  <i className="ti ti-download" style={{ fontSize: 11, color: "white" }} />
-                </a>
-              )}
-            </div>
-          );
-        })}
-        {canUpload && (
-          <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3, flexShrink: 0 }}>
-            <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
-            <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
-            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
-          </label>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
   const [delayModal, setDelayModal] = useState(null);
   const [qcState, setQcState] = useState({}); // itemId -> {notes, status}
@@ -669,20 +609,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         </div>
                       )}
 
-                      {isDone && (
-                        <div>
-                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Completed</div>
-                          {stageName === "Raw ready" && (item.rawPhotos || []).length > 0 && (
-                            <StagePhotoStrip photos={item.rawPhotos} label="Raw product photos" canUpload={false} />
-                          )}
-                          {stageName === "Finishing" && (item.finishingPhotos || []).length > 0 && (
-                            <StagePhotoStrip photos={item.finishingPhotos} label="In-progress photos" canUpload={false} />
-                          )}
-                          {stageName === "QC" && (item.qcPhotos || []).length > 0 && (
-                            <StagePhotoStrip photos={item.qcPhotos} label="QC inspection photos" canUpload={false} />
-                          )}
-                        </div>
-                      )}
+                      {isDone && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Completed</div>}
 
                       {isActive && stageName === "Processing started" && vendor && (
                         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "8px 10px", borderRadius: 8, marginTop: 4 }}>
@@ -705,14 +632,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               </div>
                             );
                           })}
-                          <StagePhotoStrip
-                            photos={item.finishingPhotos || []}
-                            label="In-progress photos"
-                            canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => {
-                              onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, finishingPhotos: newPhotos } : i) });
-                            }}
-                          />
                         </div>
                       )}
 
@@ -743,14 +662,15 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>QC submitted.</div>
                           )}
 
-                          <StagePhotoStrip
-                            photos={item.qcPhotos || []}
-                            label="QC inspection photos"
-                            canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => {
-                              onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, qcPhotos: newPhotos } : i) });
-                            }}
-                          />
+                          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", margin: "12px 0 8px" }}>QC photos & videos</div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {(role === "admin" || role === "qc") && (
+                              <div style={{ width: 56, height: 56, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer" }}>
+                                <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
+                                <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -1052,44 +972,49 @@ function EditOrderModal({ order, onSave, onClose }) {
             <div>
               <label style={LABEL}>Order ID</label>
               <input value={form.orderId} onChange={e => setForm(f => ({ ...f, orderId: e.target.value }))} style={INPUT} />
-              <div style={{ fontSize: 10, color: "#BA7517", marginTop: 4 }}>
-                Temporary — for importing old orders only
-              </div>
+              <div style={{ fontSize: 10, color: "#BA7517", marginTop: 4 }}>Temporary — for importing old orders only</div>
             </div>
-            <div><label style={LABEL}>Channel</label>
+            <div>
+              <label style={LABEL}>Channel</label>
               <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))} style={INPUT}>
                 {["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
-            <div><label style={LABEL}>Order date</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={LABEL}>Order date</label>
               <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={INPUT} />
             </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div><label style={LABEL}>Salesperson</label>
-              <input value={form.salesperson} onChange={e => setForm(f => ({ ...f, salesperson: e.target.value }))} style={INPUT} />
-            </div>
-            <div><label style={LABEL}>Order value (₹)</label>
+            <div>
+              <label style={LABEL}>Order value (₹)</label>
               <input type="number" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} style={INPUT} />
             </div>
+          </div>
+          <div>
+            <label style={LABEL}>Salesperson</label>
+            <input value={form.salesperson} onChange={e => setForm(f => ({ ...f, salesperson: e.target.value }))} style={INPUT} />
           </div>
           <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px" }}>Customer</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-              <div><label style={LABEL}>Name</label>
+              <div>
+                <label style={LABEL}>Name</label>
                 <input value={form.custName} onChange={e => setForm(f => ({ ...f, custName: e.target.value }))} style={INPUT} />
               </div>
-              <div><label style={LABEL}>Phone</label>
+              <div>
+                <label style={LABEL}>Phone</label>
                 <input value={form.custPhone} onChange={e => setForm(f => ({ ...f, custPhone: e.target.value }))} style={INPUT} />
               </div>
             </div>
-            <div><label style={LABEL}>Address</label>
+            <div>
+              <label style={LABEL}>Address</label>
               <textarea value={form.custAddress} onChange={e => setForm(f => ({ ...f, custAddress: e.target.value }))}
                 style={{ ...INPUT, minHeight: 70, resize: "vertical" }} placeholder="Delivery address" />
             </div>
           </div>
-          <div><label style={LABEL}>Internal notes</label>
+          <div>
+            <label style={LABEL}>Internal notes</label>
             <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
               style={{ ...INPUT, minHeight: 70, resize: "vertical" }} />
           </div>
