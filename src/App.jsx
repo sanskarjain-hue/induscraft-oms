@@ -187,12 +187,16 @@ export default function App() {
 
   async function handleUpdateOrder(updatedOrder) {
     try {
-      const saved = await api.updateOrder(updatedOrder.id, updatedOrder);
-      setAllOrders(prev => prev.map(o => (o.id === saved.id || o._id === saved._id) ? saved : o));
+      // Use _id or original id to find the order for the API call
+      const originalOrder = allOrders.find(o => o._id === updatedOrder._id);
+      const originalId = originalOrder?.id || updatedOrder.id;
+      const saved = await api.updateOrder(originalId, updatedOrder);
+      setAllOrders(prev => prev.map(o => (o._id === saved._id) ? saved : o));
+      // If order ID changed, update the selected order ID so the detail view stays open
+      if (saved.id !== originalId) setSelectedOrderId(saved.id);
     } catch (err) {
       console.error("Update order error:", err);
-      // Optimistic update fallback
-      setAllOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+      setAllOrders(prev => prev.map(o => o._id === updatedOrder._id ? updatedOrder : o));
     }
   }
 

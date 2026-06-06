@@ -1013,6 +1013,7 @@ function PaymentsTab({ order, role, onUpdate }) {
 // ── EDIT ORDER MODAL ──────────────────────────────────────
 function EditOrderModal({ order, onSave, onClose }) {
   const [form, setForm] = useState({
+    orderId: order.id || "",
     channel: order.channel || "",
     salesperson: order.salesperson || "",
     date: order.date || "",
@@ -1026,6 +1027,7 @@ function EditOrderModal({ order, onSave, onClose }) {
   function save() {
     onSave({
       ...order,
+      id: form.orderId.trim() || order.id,
       channel: form.channel,
       salesperson: form.salesperson,
       date: form.date,
@@ -1047,11 +1049,19 @@ function EditOrderModal({ order, onSave, onClose }) {
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={LABEL}>Order ID</label>
+              <input value={form.orderId} onChange={e => setForm(f => ({ ...f, orderId: e.target.value }))} style={INPUT} />
+              <div style={{ fontSize: 10, color: "#BA7517", marginTop: 4 }}>
+                ⚠ Temporary — for importing old orders only
+              </div>
+            </div>
             <div><label style={LABEL}>Channel</label>
               <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))} style={INPUT}>
                 {["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
+          </div>
             <div><label style={LABEL}>Order date</label>
               <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={INPUT} />
             </div>
