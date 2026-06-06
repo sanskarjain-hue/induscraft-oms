@@ -9,6 +9,8 @@ const CHANNEL_PREFIXES = {
 
 const FINISHING_OPTIONS = ["Polish", "Upholstery", "Cane work", "Glass work", "Brass work", "Other"];
 
+const POLISH_OPTIONS = ["Natural", "Honey", "Dark Teak", "Rosewood", "Espresso Brown"];
+
 const INPUT = {
   width: "100%", fontSize: 13, padding: "8px 10px",
   borderRadius: 8, border: "0.5px solid var(--color-border-secondary)",
@@ -34,6 +36,7 @@ function emptyItem() {
   return {
     _id: Date.now() + Math.random(),
     productId: "",
+    shopifyHandle: "",
     name: "",
     qty: 1,
     price: "",
@@ -116,6 +119,146 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
               </button>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SHOPIFY PRODUCT LOADER ────────────────────────────────
+function ShopifyLoader({ idx, item, updateItem, fetchShopifyProduct }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [product, setProduct] = useState(null);
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
+
+  async function handleFetch() {
+    if (!url.trim()) return;
+    setLoading(true);
+    setError("");
+    setProduct(null);
+    setSelectedVariantId(null);
+    const result = await fetchShopifyProduct(idx, url.trim());
+    setLoading(false);
+    if (result.error) { setError(result.error); return; }
+    setProduct(result);
+    // If only one variant, auto-select it
+    if (result.product.variants.length === 1) {
+      applyVariant(result, result.product.variants[0].id, result);
+    }
+  }
+
+  function applyVariant(result, variantId, baseResult) {
+    const r = result || baseResult;
+    const variant = r.product.variants.find(v => v.id === variantId);
+    if (!variant) return;
+    setSelectedVariantId(variantId);
+
+    // Build name from product title + variant title (skip "Default Title")
+    const variantLabel = variant.title !== "Default Title" ? ` — ${variant.title}` : "";
+    const fullName = `${r.product.title}${variantLabel}`;
+
+    // Extract wood colour from option1 (usually Color/Finish)
+    const colourVal = variant.option1 || "";
+    const knownFinishes = ["Honey", "Dark", "Rosewood", "Espresso", "Natural"];
+    const woodColour = knownFinishes.find(f => colourVal.toLowerCase().includes(f.toLowerCase())) || colourVal;
+
+    updateItem(idx, "name", fullName);
+    updateItem(idx, "wood", r.wood);
+    updateItem(idx, "woodColour", woodColour);
+    updateItem(idx, "price", parseFloat(variant.price));
+    updateItem(idx, "shopifyHandle", r.handle);
+    updateItem(idx, "images", r.images);
+    setOpen(false);
+    setUrl("");
+    setProduct(null);
+    setSelectedVariantId(null);
+  }
+
+  // Group options for display
+  const options = product ? product.product.options : [];
+  const variants = product ? product.product.variants : [];
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{
+          fontSize: 12, padding: "5px 12px", borderRadius: 7,
+          border: "0.5px solid #C0392B", background: "#FCEBEB",
+          color: "#C0392B", cursor: "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", gap: 5,
+        }}>
+          <i className="ti ti-world" style={{ fontSize: 13 }} /> Load from website
+        </button>
+      ) : (
+        <div style={{ border: "0.5px solid #e5e5e0", borderRadius: 10, padding: 14, background: "#fafaf8" }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: "#1a1a1a", marginBottom: 8 }}>
+            Load product from Induscraft website
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://induscraft.com/products/product-name"
+              style={{ flex: 1, fontSize: 12, padding: "7px 10px", borderRadius: 8, border: "0.5px solid #cccccc", background: "white", color: "#1a1a1a", fontFamily: "inherit" }}
+              onKeyDown={e => e.key === "Enter" && handleFetch()}
+            />
+            <button onClick={handleFetch} disabled={loading} style={{
+              fontSize: 12, padding: "7px 16px", borderRadius: 8, border: "none",
+              background: loading ? "#999" : "#C0392B", color: "white",
+              cursor: loading ? "default" : "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+            }}>
+              {loading ? "Loading..." : "Fetch"}
+            </button>
+            <button onClick={() => { setOpen(false); setUrl(""); setError(""); setProduct(null); }} style={{
+              fontSize: 12, padding: "7px 12px", borderRadius: 8,
+              border: "0.5px solid #cccccc", background: "transparent",
+              color: "#666660", cursor: "pointer", fontFamily: "inherit",
+            }}>Cancel</button>
+          </div>
+
+          {error && <div style={{ fontSize: 12, color: "#C0392B", marginBottom: 8 }}>{error}</div>}
+
+          {product && (
+            <div>
+              {/* Product preview */}
+              <div style={{ display: "flex", gap: 10, marginBottom: 12, padding: 10, background: "white", borderRadius: 8, border: "0.5px solid #e5e5e0" }}>
+                {product.images[0] && (
+                  <img src={product.images[0].url} alt={product.product.title}
+                    style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                )}
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 3 }}>{product.product.title}</div>
+                  <div style={{ fontSize: 11, color: "#666660" }}>{product.product.product_type} · {product.wood}</div>
+                  <div style={{ fontSize: 11, color: "#666660" }}>{variants.length} variant{variants.length !== 1 ? "s" : ""}</div>
+                </div>
+              </div>
+
+              {/* Variant selection — only if multiple variants */}
+              {variants.length > 1 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: "#666660", marginBottom: 6, fontWeight: 500 }}>Select variant</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+                    {variants.map(v => (
+                      <button key={v.id} onClick={() => applyVariant(product, v.id)}
+                        style={{
+                          textAlign: "left", fontSize: 12, padding: "7px 12px", borderRadius: 8, cursor: "pointer",
+                          border: `0.5px solid ${selectedVariantId === v.id ? "#C0392B" : "#e5e5e0"}`,
+                          background: selectedVariantId === v.id ? "#FCEBEB" : "white",
+                          color: selectedVariantId === v.id ? "#C0392B" : "#1a1a1a",
+                          fontFamily: "inherit", display: "flex", justifyContent: "space-between",
+                        }}>
+                        <span>{v.title}</span>
+                        <span style={{ fontWeight: 600 }}>₹{parseFloat(v.price).toLocaleString("en-IN")}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -224,6 +367,33 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   function removeItem(idx) {
     if (items.length === 1) return;
     setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function fetchShopifyProduct(idx, rawUrl) {
+    try {
+      // Extract handle from URL
+      const match = rawUrl.match(/products\/([^/?#]+)/);
+      if (!match) return { error: "Invalid Shopify product URL" };
+      const handle = match[1];
+      const res = await fetch(`https://induscraft.com/products/${handle}.json`);
+      if (!res.ok) return { error: "Product not found" };
+      const { product } = await res.json();
+
+      // Extract wood from title or body
+      const titleLower = product.title.toLowerCase();
+      const wood = titleLower.includes("sheesham") ? "Sheesham" :
+                   titleLower.includes("mango") ? "Mango wood" :
+                   titleLower.includes("acacia") ? "Acacia" : "Sheesham";
+
+      // Images (first 3)
+      const images = (product.images || []).slice(0, 3).map(img => ({
+        url: img.src, name: img.alt || product.title, type: "image/webp"
+      }));
+
+      return { product, wood, images, handle };
+    } catch (err) {
+      return { error: "Could not fetch product. Check the URL." };
+    }
   }
 
   function handleSave() {
@@ -394,6 +564,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                     )}
                   </div>
                   <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                    <ShopifyLoader idx={idx} item={item} updateItem={updateItem} fetchShopifyProduct={fetchShopifyProduct} />
+
                     <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
                       <Field label="Item name *">
                         <input value={item.name} onChange={e => updateItem(idx, "name", e.target.value)}
@@ -417,9 +589,12 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                           style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} placeholder="e.g. Sheesham, Mango" />
                         {errors[`item_${idx}_wood`] && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors[`item_${idx}_wood`]}</div>}
                       </Field>
-                      <Field label="Wood colour">
-                        <input value={item.woodColour} onChange={e => updateItem(idx, "woodColour", e.target.value)}
-                          style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} placeholder="e.g. Walnut stain" />
+                      <Field label="Polish / Finish">
+                        <select value={item.woodColour} onChange={e => updateItem(idx, "woodColour", e.target.value)}
+                          style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }}>
+                          <option value="">Select finish</option>
+                          {POLISH_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                       </Field>
                     </div>
 
