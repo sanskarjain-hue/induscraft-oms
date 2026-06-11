@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { CHANNELS, STAGES } from "./data";
 import { fetchNextOrderId } from "./api";
 import { formatCurrency } from "./ui";
@@ -10,6 +10,8 @@ const CHANNEL_PREFIXES = {
 const FINISHING_OPTIONS = ["Polish", "Upholstery", "Cane work", "Glass work", "Brass work", "Other"];
 
 const POLISH_OPTIONS = ["Natural", "Honey", "Dark Teak", "Rosewood", "Espresso Brown"];
+
+const DRAFT_KEY = "induscraft_order_draft";
 
 const INPUT = {
   width: "100%", fontSize: 13, padding: "8px 10px",
@@ -287,6 +289,59 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [originalDelivery, setOriginalDelivery] = useState("");
 
   const [errors, setErrors] = useState({});
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+
+  // Check for existing draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) setHasDraft(true);
+    } catch {}
+  }, []);
+
+  // Auto-save draft whenever any field changes
+  const saveDraft = useCallback(() => {
+    try {
+      const draft = { step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+  }, [step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery]);
+
+  useEffect(() => {
+    // Only auto-save if the form has been started (channel selected)
+    if (channel) saveDraft();
+  }, [channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery]);
+
+  function restoreDraft() {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (!saved) return;
+      const d = JSON.parse(saved);
+      if (d.step) setStep(d.step);
+      if (d.channel) setChannel(d.channel);
+      if (d.customOrderId) setCustomOrderId(d.customOrderId);
+      if (d.salesperson) setSalesperson(d.salesperson);
+      if (d.date) setDate(d.date);
+      if (d.custName) setCustName(d.custName);
+      if (d.custPhone) setCustPhone(d.custPhone);
+      if (d.custAddress) setCustAddress(d.custAddress);
+      if (d.items) setItems(d.items);
+      if (d.notes) setNotes(d.notes);
+      if (d.originalDelivery) setOriginalDelivery(d.originalDelivery);
+      setHasDraft(false);
+      setDraftRestored(true);
+    } catch {}
+  }
+
+  function discardDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    setHasDraft(false);
+  }
+
+  function clearDraftOnSave() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }
 
   const STEPS = ["Channel & basics", "Customer", "Line items", "Delivery & notes"];
   const TOTAL_STEPS = 4;
@@ -469,6 +524,26 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
             <i className="ti ti-x" />
           </button>
         </div>
+
+        {/* Draft restore banner */}
+        {hasDraft && !draftRestored && (
+          <div style={{ padding: "10px 24px", background: "#FAEEDA", borderBottom: "0.5px solid #EF9F27", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontSize: 12, color: "#633806" }}>
+              <i className="ti ti-clock" style={{ fontSize: 13, marginRight: 5 }} />
+              You have an unsaved draft from a previous session
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={discardDraft} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "0.5px solid #BA7517", background: "transparent", color: "#633806", cursor: "pointer", fontFamily: "inherit" }}>Discard</button>
+              <button onClick={restoreDraft} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#BA7517", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Restore draft</button>
+            </div>
+          </div>
+        )}
+        {draftRestored && (
+          <div style={{ padding: "8px 24px", background: "#EAF3DE", borderBottom: "0.5px solid #97C459", display: "flex", alignItems: "center", gap: 8 }}>
+            <i className="ti ti-check" style={{ fontSize: 13, color: "#27500A" }} />
+            <span style={{ fontSize: 12, color: "#27500A" }}>Draft restored — continue where you left off</span>
+          </div>
+        )}
 
         {/* Step indicator */}
         <div style={{ display: "flex", padding: "14px 24px 0", gap: 6 }}>
