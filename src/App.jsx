@@ -9,6 +9,7 @@ import AfterSales from "./AfterSales";
 import Reports from "./Reports";
 import PastOrders from "./PastOrders";
 import Settings from "./Settings";
+import Pipeline from "./Pipeline";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-home" },
@@ -17,6 +18,7 @@ const NAV = [
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
   { id: "reports", label: "Reports", icon: "ti-chart-bar" },
   { id: "pastorders", label: "Past Orders", icon: "ti-archive" },
+  { id: "pipeline", label: "Pipeline", icon: "ti-chart-dots" },
   { id: "settings", label: "Settings", icon: "ti-settings" },
 ];
 
@@ -130,6 +132,7 @@ function LoginScreen({ onLogin, darkMode, setDarkMode }) {
 export default function App() {
   const [page, setPage] = useState("dashboard");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [prefillOrder, setPrefillOrder] = useState(null);
   const [selectedVendorId, setSelectedVendorId] = useState(null);
   const [currentUser, setCurrentUser] = useState(() => api.getStoredUser());
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("induscraft-theme") === "dark");
@@ -296,7 +299,7 @@ export default function App() {
             {page === "orders" && !selectedOrderId && (
               <OrdersList orders={allOrders} vendors={allVendors} role={role}
                 onOrderClick={(id) => navigate("orders", id)}
-                onNewOrder={handleNewOrder} />
+                onNewOrder={handleNewOrder} prefill={prefillOrder} onPrefillUsed={() => setPrefillOrder(null)} />
             )}
             {page === "orders" && selectedOrderId && selectedOrder && (
               <OrderDetail order={selectedOrder} role={role} vendors={allVendors}
@@ -322,6 +325,7 @@ export default function App() {
             {page === "reports" && <Reports orders={allOrders} role={role} />}
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={handleUpdateOrder} />}
             {page === "settings" && role === "admin" && <Settings />}
+            {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
           </main>
         </>
       )}

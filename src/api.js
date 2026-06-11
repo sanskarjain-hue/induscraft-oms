@@ -222,3 +222,24 @@ export async function uploadFile(file, folder = "general") {
 export async function uploadMultipleFiles(files, folder = "general") {
   return Promise.all(Array.from(files).map(f => uploadFile(f, folder)));
 }
+
+// ── DEALS / PIPELINE ─────────────────────────────────────
+export async function fetchDeals() {
+  return apiFetch("/deals");
+}
+
+export async function createDeal(data) {
+  return apiFetch("/deals", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateDeal(id, data) {
+  return apiFetch(`/deals/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function addDealLog(id, text) {
+  return apiFetch(`/deals/${id}/log`, { method: "POST", body: JSON.stringify({ text }) });
+}
+
+export async function deleteDeal(id) {
+  return apiFetch(`/deals/${id}`, { method: "DELETE" });
+}

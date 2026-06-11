@@ -267,18 +267,18 @@ function ShopifyLoader({ idx, item, updateItem, fetchShopifyProduct }) {
   );
 }
 
-export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUser, existingOrders }) {
+export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUser, existingOrders, prefill, onPrefillUsed }) {
   const [step, setStep] = useState(1);
 
   // Step 1 — Channel & basics
-  const [channel, setChannel] = useState("");
+  const [channel, setChannel] = useState(prefill?.channel || "");
   const [customOrderId, setCustomOrderId] = useState("");
-  const [salesperson, setSalesperson] = useState(currentUser?.name || "");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]); // stored as YYYY-MM-DD, displayed as-is
+  const [salesperson, setSalesperson] = useState(prefill?.salesperson || currentUser?.name || "");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
 
   // Step 2 — Customer
-  const [custName, setCustName] = useState("");
-  const [custPhone, setCustPhone] = useState("");
+  const [custName, setCustName] = useState(prefill?.custName || "");
+  const [custPhone, setCustPhone] = useState(prefill?.custPhone || "");
   const [custAddress, setCustAddress] = useState("");
 
   // Step 4 — Line items
@@ -287,6 +287,14 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   // Step 5 — Notes & delivery
   const [notes, setNotes] = useState("");
   const [originalDelivery, setOriginalDelivery] = useState("");
+
+  // If opened from a Won deal, fetch the order ID and clear prefill
+  useEffect(() => {
+    if (prefill?.channel) {
+      handleChannelChange(prefill.channel);
+      if (onPrefillUsed) onPrefillUsed();
+    }
+  }, []);
 
   const [errors, setErrors] = useState({});
   const [draftRestored, setDraftRestored] = useState(false);
