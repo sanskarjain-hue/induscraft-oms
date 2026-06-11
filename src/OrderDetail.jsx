@@ -4,6 +4,57 @@ import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency } from "./ui";
 import { STAGES } from "./data";
 
+// ── STAGE TIMER ───────────────────────────────────────────
+const STAGE_DURATIONS = {
+  0: 3,   // Looking for vendor — 3 days
+  1: 14,  // Processing started — 14 days
+  2: null, // Raw ready — gate, no timer
+  3: 7,   // Finishing — 7 days
+  4: 7,   // QC — 7 days
+  5: 7,   // Packed — 7 days
+  6: 7,   // Dispatched — 7 days
+  7: null, // Delivered to warehouse — paused (awaiting customer)
+  8: null, // Delivered to customer — done
+};
+
+function getStageTimer(item, orderDate) {
+  const stage = item.stageIndex;
+  const duration = STAGE_DURATIONS[stage];
+  if (duration === null || duration === undefined) return null;
+
+  let enteredAt = null;
+  if (item.stageHistory && item.stageHistory.length > 0) {
+    const entry = [...item.stageHistory].reverse().find(h => h.stageIndex === stage);
+    if (entry) enteredAt = new Date(entry.enteredAt);
+  }
+  if (!enteredAt && stage === 0 && orderDate) {
+    enteredAt = new Date(orderDate);
+  }
+  if (!enteredAt) return null;
+
+  const deadline = new Date(enteredAt);
+  deadline.setDate(deadline.getDate() + duration);
+  const daysLeft = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
+  return { daysLeft, deadline };
+}
+
+function TimerPill({ item, orderDate }) {
+  const timer = getStageTimer(item, orderDate);
+  if (!timer) return null;
+  const { daysLeft } = timer;
+  const color = daysLeft > 2 ? { bg: "#EAF3DE", fg: "#27500A" } :
+                daysLeft > 0 ? { bg: "#FAEEDA", fg: "#633806" } :
+                { bg: "#FCEBEB", fg: "#791F1F" };
+  const label = daysLeft > 0
+    ? `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`
+    : `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? "s" : ""}`;
+  return (
+    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500, whiteSpace: "nowrap" }}>
+      <i className="ti ti-clock" style={{ fontSize: 10, marginRight: 3 }} />{label}
+    </span>
+  );
+}
+
 function TabBar({ tabs, active, onSelect }) {
   return (
     <div style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0" }}>
@@ -498,6 +549,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                 )}
               </div>
               <Badge variant={stageVariant(item.stageIndex)}>{STAGES[item.stageIndex]}</Badge>
+              <TimerPill item={item} orderDate={order.date} />
             </div>
 
             {isDelayed && (
@@ -527,7 +579,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                     <div style={{ flex: 1, paddingBottom: 16 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, color: isDone ? "#3B6D11" : isActive ? "#854F0B" : "var(--color-text-secondary)", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span>{stageName}</span>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          {isActive && <TimerPill item={item} orderDate={order.date} />}
                           {isActive && userCanAdvance && stageName !== "QC" && stageName !== "Raw ready" && stageName !== "Delivered to warehouse" && (
                             <button onClick={() => advanceItem(item.id)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                               <i className="ti ti-arrow-right" style={{ fontSize: 12 }} /> Mark complete

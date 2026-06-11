@@ -2,6 +2,68 @@ import { useState } from "react";
 import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, MiniPipeline, formatCurrency } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 
+// ── STAGE TIMER ───────────────────────────────────────────
+const STAGE_DURATIONS = {
+  0: 3,   // Looking for vendor — 3 days
+  1: 14,  // Processing started — 14 days
+  2: null, // Raw ready — gate, no timer
+  3: 7,   // Finishing — 7 days
+  4: 7,   // QC — 7 days
+  5: 7,   // Packed — 7 days
+  6: 7,   // Dispatched — 7 days
+  7: null, // Delivered to warehouse — paused (awaiting customer)
+  8: null, // Delivered to customer — done
+};
+
+function getStageTimer(item, orderDate) {
+  const stage = item.stageIndex;
+  const duration = STAGE_DURATIONS[stage];
+  if (duration === null || duration === undefined) return null;
+
+  let enteredAt = null;
+  if (item.stageHistory && item.stageHistory.length > 0) {
+    const entry = [...item.stageHistory].reverse().find(h => h.stageIndex === stage);
+    if (entry) enteredAt = new Date(entry.enteredAt);
+  }
+  if (!enteredAt && stage === 0 && orderDate) {
+    enteredAt = new Date(orderDate);
+  }
+  if (!enteredAt) return null;
+
+  const deadline = new Date(enteredAt);
+  deadline.setDate(deadline.getDate() + duration);
+  const daysLeft = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
+  return { daysLeft, deadline };
+}
+
+function TimerPill({ item, orderDate, compact = false }) {
+  const timer = getStageTimer(item, orderDate);
+  if (!timer) return null;
+  const { daysLeft } = timer;
+  const color = daysLeft > 2 ? { bg: "#EAF3DE", fg: "#27500A" } :
+                daysLeft > 0 ? { bg: "#FAEEDA", fg: "#633806" } :
+                { bg: "#FCEBEB", fg: "#791F1F" };
+  const label = daysLeft > 0
+    ? compact ? `${daysLeft}d` : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`
+    : compact ? `${Math.abs(daysLeft)}d late` : `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? "s" : ""}`;
+  return (
+    <span style={{ fontSize: compact ? 10 : 11, padding: compact ? "1px 6px" : "2px 8px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500, whiteSpace: "nowrap" }}>
+      {!compact && <i className="ti ti-clock" style={{ fontSize: 10, marginRight: 3 }} />}
+      {label}
+    </span>
+  );
+}
+
+function getOrderTimerStatus(order) {
+  let worst = null;
+  for (const item of order.items) {
+    const t = getStageTimer(item, order.date);
+    if (!t) continue;
+    if (!worst || t.daysLeft < worst.daysLeft) worst = t;
+  }
+  return worst;
+}
+
 const isNew = o => !o.deliveryConfirmed && o.items.every(i => i.stageIndex === 0);
 
 const isPast = o => {
@@ -98,7 +160,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "var(--color-background-secondary)" }}>
-              {["", "Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Exp. delivery", "Status"].map(h => (
+              {["", "Order ID", "Date", "Customer", "Items", "Channel", "Value", "Salesperson", "Stage", "Timer", "Exp. delivery", "Status"].map(h => (
                 <th key={h} style={{ textAlign: "left", fontSize: 11, color: "var(--color-text-secondary)", padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
@@ -152,6 +214,16 @@ export default function Dashboard({ orders, role, onOrderClick }) {
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.salesperson}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                     <Badge variant={stageVariant(displayStageIdx)}>{STAGES[displayStageIdx]}</Badge>
+                  </td>
+                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                    {(() => {
+                      const t = getOrderTimerStatus(o);
+                      if (!t) return <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>—</span>;
+                      const { daysLeft } = t;
+                      const color = daysLeft > 2 ? { bg: "#EAF3DE", fg: "#27500A" } : daysLeft > 0 ? { bg: "#FAEEDA", fg: "#633806" } : { bg: "#FCEBEB", fg: "#791F1F" };
+                      const label = daysLeft > 0 ? `${daysLeft}d left` : `${Math.abs(daysLeft)}d late`;
+                      return <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500 }}>{label}</span>;
+                    })()}
                   </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontSize: 12, color: "var(--color-text-secondary)" }}>{latestDelivery}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontSize: 12 }}>
