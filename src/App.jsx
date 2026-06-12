@@ -260,7 +260,7 @@ export default function App() {
           <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.3px" }}>
-                <span style={{ color: "#C0392B" }}>Indus</span>craft <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>OMS</span>
+                <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>Operations</span> <span style={{ color: "#C0392B", fontWeight: 600 }}>— Induscraft</span>
               </div>
               <div style={{ display: "flex", gap: 2 }}>
                 {NAV.map(n => (

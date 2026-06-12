@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { CHANNELS, STAGES } from "./data";
-import { fetchNextOrderId } from "./api";
+import { fetchNextOrderId, lookupCustomer } from "./api";
 import { formatCurrency } from "./ui";
 
 const CHANNEL_PREFIXES = {
@@ -297,6 +297,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   }, []);
 
   const [errors, setErrors] = useState({});
+  const [customerSuggestion, setCustomerSuggestion] = useState(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
 
@@ -430,6 +432,27 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   function removeItem(idx) {
     if (items.length === 1) return;
     setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handlePhoneLookup(phone) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 8) { setCustomerSuggestion(null); return; }
+    setLookingUp(true);
+    try {
+      const found = await lookupCustomer(phone);
+      setCustomerSuggestion(found || null);
+    } catch {
+      setCustomerSuggestion(null);
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
+  function applyCustomerSuggestion() {
+    if (!customerSuggestion) return;
+    if (customerSuggestion.name) setCustName(customerSuggestion.name);
+    if (customerSuggestion.address) setCustAddress(customerSuggestion.address);
+    setCustomerSuggestion(null);
   }
 
   async function fetchShopifyProduct(idx, rawUrl) {
@@ -621,9 +644,22 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                 {errors.custName && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.custName}</div>}
               </Field>
               <Field label="Phone *">
-                <input value={custPhone} onChange={e => setCustPhone(e.target.value)}
+                <input value={custPhone} onChange={e => { setCustPhone(e.target.value); handlePhoneLookup(e.target.value); }}
                   style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} placeholder="+91 XXXXX XXXXX" />
                 {errors.custPhone && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.custPhone}</div>}
+                {lookingUp && <div style={{ fontSize: 11, color: "#666660", marginTop: 4 }}>Looking up...</div>}
+                {customerSuggestion && (
+                  <div style={{ marginTop: 8, padding: "10px 12px", background: "#EAF3DE", borderRadius: 9, border: "0.5px solid #97C459", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#27500A" }}>{customerSuggestion.name}</div>
+                      {customerSuggestion.address && <div style={{ fontSize: 11, color: "#3B6D11", marginTop: 2 }}>{customerSuggestion.address.slice(0, 60)}{customerSuggestion.address.length > 60 ? "…" : ""}</div>}
+                      {customerSuggestion.lastOrderId && <div style={{ fontSize: 10, color: "#3B6D11", marginTop: 2 }}>Last order: {customerSuggestion.lastOrderId}</div>}
+                    </div>
+                    <button onClick={applyCustomerSuggestion} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#27500A", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, whiteSpace: "nowrap", marginLeft: 10 }}>
+                      Use this
+                    </button>
+                  </div>
+                )}
               </Field>
               <Field label="Address (optional)">
                 <textarea value={custAddress} onChange={e => setCustAddress(e.target.value)}

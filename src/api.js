@@ -223,6 +223,13 @@ export async function uploadMultipleFiles(files, folder = "general") {
   return Promise.all(Array.from(files).map(f => uploadFile(f, folder)));
 }
 
+// ── CUSTOMERS ─────────────────────────────────────────────
+export async function lookupCustomer(phone) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 6) return null;
+  return apiFetch(`/customers?phone=${encodeURIComponent(digits)}`);
+}
+
 // ── DEALS / PIPELINE ─────────────────────────────────────
 export async function fetchDeals() {
   return apiFetch("/deals");
