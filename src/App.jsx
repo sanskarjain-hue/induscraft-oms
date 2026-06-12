@@ -306,6 +306,7 @@ export default function App() {
                 onBack={() => setSelectedOrderId(null)}
                 onUpdate={handleUpdateOrder}
                 onVendorClick={(vid) => navigate("vendors", null, vid)}
+                onVendorCreated={v => setAllVendors(prev => [...prev, v])}
                 currentUser={currentUser} />
             )}
             {page === "vendors" && (

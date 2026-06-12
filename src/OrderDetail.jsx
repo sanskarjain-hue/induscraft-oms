@@ -287,7 +287,186 @@ function OrderInfoTab({ order, role, onUpdate }) {
   );
 }
 
-function LineItemsTab({ order, role, vendors, onUpdate }) {
+// ── VENDOR ASSIGN ─────────────────────────────────────────
+function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
+  const [search, setSearch] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [newVendor, setNewVendor] = useState({ name: "", phone: "", contact: "", location: "Jodhpur" });
+  const [saving, setSaving] = useState(false);
+
+  const assigned = (vendors || []).find(v => v.id === item.vendorId || v._id === item.vendorId);
+  const filtered = (vendors || []).filter(v =>
+    v.name.toLowerCase().includes(search.toLowerCase()) ||
+    (v.phone || "").includes(search) ||
+    (v.contact || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  function assignVendor(vendorId) {
+    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i) };
+    onUpdate(updated);
+    setShowDropdown(false);
+    setSearch("");
+  }
+
+  function unassign() {
+    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: null, vendorCost: 0, committedDate: "" } : i) };
+    onUpdate(updated);
+  }
+
+  async function createAndAssign() {
+    if (!newVendor.name.trim()) return;
+    setSaving(true);
+    try {
+      const created = await import("./api").then(m => m.createVendor({
+        name: newVendor.name,
+        phone: newVendor.phone,
+        contact: newVendor.contact,
+        location: newVendor.location,
+        initials: newVendor.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase(),
+        color: "teal",
+      }));
+      if (onVendorCreated) onVendorCreated(created);
+      assignVendor(created._id || created.id);
+      setShowNew(false);
+      setNewVendor({ name: "", phone: "", contact: "", location: "Jodhpur" });
+    } catch (err) {
+      alert("Failed to create vendor: " + err.message);
+    } finally { setSaving(false); }
+  }
+
+  const INPUT = { width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" };
+
+  return (
+    <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Vendor</div>
+
+      {assigned ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>{assigned.name}</div>
+            {(assigned.phone || assigned.contact) && (
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                {assigned.contact && <span>{assigned.contact}</span>}
+                {assigned.contact && assigned.phone && <span> &middot; </span>}
+                {assigned.phone && <span>{assigned.phone}</span>}
+              </div>
+            )}
+          </div>
+          <button onClick={unassign} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Change</button>
+        </div>
+      ) : (
+        <div style={{ position: "relative" }}>
+          {/* Search input */}
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setShowDropdown(true); setShowNew(false); }}
+            onFocus={() => setShowDropdown(true)}
+            placeholder="Search or add vendor..."
+            style={{ ...INPUT, marginBottom: showDropdown ? 0 : 0 }}
+          />
+
+          {/* Dropdown */}
+          {showDropdown && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100, background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", marginTop: 4, overflow: "hidden", maxHeight: 260, overflowY: "auto" }}>
+              {filtered.length > 0 && (
+                <div>
+                  {filtered.map(v => (
+                    <div key={v.id || v._id} onClick={() => assignVendor(v.id || v._id)}
+                      style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "0.5px solid var(--color-border-tertiary)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{v.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                        {v.contact && <span>{v.contact}</span>}
+                        {v.contact && v.phone && <span> &middot; </span>}
+                        {v.phone && <span>{v.phone}</span>}
+                        {v.location && <span> &middot; {v.location}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {filtered.length === 0 && search && (
+                <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--color-text-secondary)" }}>No matching vendors</div>
+              )}
+              {/* Add new vendor option */}
+              <div onClick={() => { setShowNew(true); setShowDropdown(false); }}
+                style={{ padding: "10px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, borderTop: filtered.length > 0 ? "0.5px solid var(--color-border-tertiary)" : "none" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <i className="ti ti-plus" style={{ fontSize: 13, color: "#C0392B" }} />
+                <span style={{ fontSize: 13, color: "#C0392B", fontWeight: 500 }}>Add new vendor</span>
+                {search && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>"{search}"</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Click outside to close */}
+          {showDropdown && <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setShowDropdown(false)} />}
+        </div>
+      )}
+
+      {/* New vendor form */}
+      {showNew && (
+        <div style={{ marginTop: 10, padding: "14px 16px", background: "var(--color-background-secondary)", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)" }}>
+          <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12, color: "var(--color-text-primary)" }}>New vendor details</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Company name *</div>
+              <input value={newVendor.name} onChange={e => setNewVendor(v => ({ ...v, name: e.target.value }))}
+                placeholder="e.g. Sharma Wood Works" style={INPUT} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Phone number</div>
+                <input value={newVendor.phone} onChange={e => setNewVendor(v => ({ ...v, phone: e.target.value }))}
+                  placeholder="+91 XXXXX XXXXX" style={INPUT} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Person of correspondence</div>
+                <input value={newVendor.contact} onChange={e => setNewVendor(v => ({ ...v, contact: e.target.value }))}
+                  placeholder="Contact person name" style={INPUT} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Location</div>
+              <input value={newVendor.location} onChange={e => setNewVendor(v => ({ ...v, location: e.target.value }))}
+                placeholder="e.g. Jodhpur" style={INPUT} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+            <button onClick={() => setShowNew(false)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            <button onClick={createAndAssign} disabled={saving || !newVendor.name.trim()}
+              style={{ fontSize: 12, padding: "6px 16px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Saving..." : "Save & assign"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Committed date and vendor cost — shown once assigned */}
+      {assigned && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+          <div>
+            <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Committed delivery</div>
+            <input type="date" defaultValue={item.committedDate || ""}
+              onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, committedDate: e.target.value } : i) })}
+              style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Vendor cost (₹)</div>
+            <input type="number" defaultValue={item.vendorCost || ""}
+              onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorCost: parseFloat(e.target.value) || 0 } : i) })}
+              style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   return (
     <div>
       {order.items.map(item => (
@@ -368,43 +547,13 @@ function LineItemsTab({ order, role, vendors, onUpdate }) {
 
             {/* Vendor assignment — Admin only */}
             {role === "admin" && (
-              <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 12, marginBottom: 12 }}>
-                <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Vendor</div>
-                {item.vendorId ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{(vendors || []).find(v => v.id === item.vendorId)?.name || "Unknown vendor"}</div>
-                    <button onClick={() => {
-                      const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: "", vendorCost: 0, committedDate: "" } : i) };
-                      onUpdate(updated);
-                    }} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Change</button>
-                  </div>
-                ) : (
-                  <select defaultValue="" onChange={e => {
-                    if (!e.target.value) return;
-                    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: e.target.value, stageIndex: Math.max(i.stageIndex, 1) } : i) };
-                    onUpdate(updated);
-                  }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }}>
-                    <option value="">Assign vendor...</option>
-                    {(vendors || []).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                  </select>
-                )}
-                {item.vendorId && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Committed delivery</div>
-                      <input type="date" defaultValue={item.committedDate || ""}
-                        onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, committedDate: e.target.value } : i) })}
-                        style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Vendor cost (₹)</div>
-                      <input type="number" defaultValue={item.vendorCost || ""}
-                        onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorCost: parseFloat(e.target.value) || 0 } : i) })}
-                        style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <VendorAssign
+                item={item}
+                order={order}
+                vendors={vendors}
+                onUpdate={onUpdate}
+                onVendorCreated={onVendorCreated}
+              />
             )}
 
             {/* Production status mini tracker */}
@@ -801,7 +950,7 @@ function VendorsTab({ order, vendors, role, onVendorClick }) {
               <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#EEEDFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500, color: "#3C3489" }}>{vendor?.initials || "?"}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{vendor?.name || "Not assigned"}</div>
-                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{vendor?.phone} &middot; {vendor?.location}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{vendor?.contact && <span>{vendor.contact} &middot; </span>}{vendor?.phone} &middot; {vendor?.location}</div>
               </div>
               {vendor && role === "admin" && (
                 <button onClick={() => onVendorClick(vendor.id)} style={{ fontSize: 11, padding: "5px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit" }}>
@@ -1081,7 +1230,7 @@ function EditOrderModal({ order, onSave, onClose }) {
   );
 }
 
-export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onVendorClick, currentUser }) {
+export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onVendorClick, currentUser, onVendorCreated }) {
   const [tab, setTab] = useState("Order info");
   const [showPrint, setShowPrint] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -1138,7 +1287,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
       </div>
       <div style={{ background: "var(--color-background-primary)", borderRadius: "0 0 12px 12px", border: "0.5px solid var(--color-border-tertiary)", borderTop: "none", padding: 16, marginBottom: 12 }}>
         {tab === "Order info" && <OrderInfoTab order={order} role={role} onUpdate={onUpdate} />}
-        {tab === "Line items" && <LineItemsTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} />}
+        {tab === "Line items" && <LineItemsTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} onVendorCreated={onVendorCreated} />}
         {tab === "Order tracker" && <TrackerTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} currentUser={currentUser} />}
         {tab === "Vendors & production" && canSeeVendors && <VendorsTab order={order} vendors={vendors} role={role} onVendorClick={onVendorClick} />}
         {tab === "Payments" && canSeePayments && <PaymentsTab order={order} role={role} onUpdate={onUpdate} />}
