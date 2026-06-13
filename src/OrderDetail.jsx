@@ -507,9 +507,9 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                     const isImage = img.type && img.type.startsWith("image/");
                     return (
                       <div key={i} style={{ width: 72, height: 72, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", overflow: "hidden", cursor: "pointer" }}
-                        onClick={() => window.open(img.data, "_blank")}>
+                        onClick={() => { const src = img.url || img.data; if (src) window.open(src, "_blank"); }}>
                         {isImage ? (
-                          <img src={img.data} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <img src={img.url || img.data} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
                           <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
                             <i className="ti ti-file" style={{ fontSize: 20, color: "var(--color-text-secondary)" }} />
