@@ -299,7 +299,7 @@ export default function App() {
             {page === "orders" && !selectedOrderId && (
               <OrdersList orders={allOrders} vendors={allVendors} role={role}
                 onOrderClick={(id) => navigate("orders", id)}
-                onNewOrder={handleNewOrder} prefill={prefillOrder} onPrefillUsed={() => setPrefillOrder(null)} />
+                onNewOrder={handleNewOrder} prefill={prefillOrder} onPrefillUsed={() => setPrefillOrder(null)} currentUser={currentUser} />
             )}
             {page === "orders" && selectedOrderId && selectedOrder && (
               <OrderDetail order={selectedOrder} role={role} vendors={allVendors}

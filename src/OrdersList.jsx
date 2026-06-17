@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 import NewOrderForm from "./NewOrderForm";
@@ -12,10 +12,15 @@ const isPast = o => {
   return (new Date() - new Date(latest)) / (1000 * 60 * 60 * 24) >= 10;
 };
 
-export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder }) {
+export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder, prefill, onPrefillUsed }) {
   const [channelFilter, setChannelFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+
+  // Auto-open form when a prefill arrives from Pipeline won deal
+  useEffect(() => {
+    if (prefill) setShowForm(true);
+  }, [prefill]);
 
   const activeOrders = orders.filter(o => o.status !== 'archived' && !isPast(o));
 
@@ -32,6 +37,8 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
           vendors={vendors}
           existingOrders={orders}
           currentUser={null}
+          prefill={prefill}
+          onPrefillUsed={onPrefillUsed}
           onSave={(newOrder) => { onNewOrder(newOrder); setShowForm(false); }}
           onCancel={() => setShowForm(false)}
         />
