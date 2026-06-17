@@ -10,6 +10,7 @@ const USERS = [
   { username: "kishore",  name: "Kishore",      role: "Sales" },
   { username: "rajveer",  name: "Rajveer",      role: "Sales" },
   { username: "ramesh",   name: "Ramesh",       role: "Sales" },
+  { username: "trina",    name: "Trina",        role: "Sales" },
   { username: "qcteam",   name: "QC Team",      role: "QC" },
   { username: "accounts", name: "Accounts",     role: "Accountant" },
 ];

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { CHANNELS, STAGES } from "./data";
-import { fetchNextOrderId, lookupCustomer } from "./api";
+import { fetchNextOrderId, lookupCustomer, uploadFile } from "./api";
 import { formatCurrency } from "./ui";
 
 const CHANNEL_PREFIXES = {
@@ -10,6 +10,8 @@ const CHANNEL_PREFIXES = {
 const FINISHING_OPTIONS = ["Polish", "Upholstery", "Cane work", "Glass work", "Brass work", "Other"];
 
 const POLISH_OPTIONS = ["Natural", "Honey", "Dark Teak", "Rosewood", "Espresso Brown"];
+
+const SALESPEOPLE = ["Kishore", "Rajveer", "Ramesh", "Trina", "Yash", "Mukesh", "Sarthak", "Sanskar"];
 
 const DRAFT_KEY = "induscraft_order_draft";
 
@@ -65,16 +67,41 @@ function emptyItem() {
 
 function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint }) {
   const ref = useRef();
+  const [pasteActive, setPasteActive] = useState(false);
 
-  function readFiles(fileList) {
-    Array.from(fileList).forEach(file => {
+  async function readFiles(fileList) {
+    const fileArray = Array.from(fileList);
+    for (const file of fileArray) {
+      // Show preview immediately with base64 while uploading
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const fileObj = { name: file.name, type: file.type, data: e.target.result };
-        onAdd(multiple ? [...files, fileObj] : [fileObj]);
+      reader.onload = async (e) => {
+        const preview = { name: file.name, type: file.type, data: e.target.result, uploading: true };
+        onAdd(prev => multiple ? [...prev, preview] : [preview]);
+        try {
+          // Upload to Cloudinary
+          const result = await uploadFile(file, "orders");
+          const uploaded = { name: file.name, type: file.type, url: result.url, publicId: result.publicId };
+          // Replace preview with Cloudinary version
+          onAdd(prev => {
+            const idx = prev.findIndex(p => p.data === e.target.result);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = uploaded;
+            return next;
+          });
+        } catch {
+          // Keep base64 as fallback if upload fails
+          onAdd(prev => {
+            const idx = prev.findIndex(p => p.data === e.target.result);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { name: file.name, type: file.type, data: e.target.result };
+            return next;
+          });
+        }
       };
       reader.readAsDataURL(file);
-    });
+    }
   }
 
   function handleFiles(e) {
@@ -82,10 +109,46 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
     e.target.value = "";
   }
 
+  function handlePaste(e) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItems = Array.from(items).filter(i => i.type.startsWith("image/"));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+    imageItems.forEach(item => {
+      const file = item.getAsFile();
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const preview = { name: `paste-${Date.now()}.png`, type: file.type, data: ev.target.result, uploading: true };
+        onAdd(prev => multiple ? [...prev, preview] : [preview]);
+        uploadFile(file, "orders").then(result => {
+          onAdd(prev => {
+            const idx = prev.findIndex(p => p.data === ev.target.result);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { name: preview.name, type: file.type, url: result.url, publicId: result.publicId };
+            return next;
+          });
+        }).catch(() => {
+          // Keep base64 fallback on paste upload failure
+          onAdd(prev => {
+            const idx = prev.findIndex(p => p.uploading && p.data === ev.target.result);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { name: preview.name, type: file.type, data: ev.target.result };
+            return next;
+          });
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   const isImage = (f) => f.type && f.type.startsWith("image/");
 
   return (
-    <div>
+    <div onPaste={handlePaste}>
       <div style={LABEL}>{label}</div>
       <div
         onClick={() => ref.current.click()}
@@ -99,7 +162,8 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
       >
         <i className="ti ti-upload" style={{ fontSize: 22, color: "var(--color-text-secondary)", display: "block", marginBottom: 6 }} />
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Click or drag to upload</div>
-        {hint && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 3 }}>{hint}</div>}
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 3 }}>or <strong>Ctrl+V</strong> to paste a screenshot</div>
+        {hint && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>{hint}</div>}
       </div>
       <input ref={ref} type="file" accept={accept} multiple={multiple} style={{ display: "none" }} onChange={handleFiles} />
       {files.length > 0 && (
@@ -608,14 +672,25 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
               </Field>
 
               <Field label="Salesperson *">
-                <input value={salesperson} onChange={e => setSalesperson(e.target.value)}
-                  style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} placeholder="Name of salesperson" />
+                <select value={salesperson} onChange={e => setSalesperson(e.target.value)}
+                  style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }}>
+                  <option value="">Select salesperson</option>
+                  {SALESPEOPLE.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
                 {errors.salesperson && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.salesperson}</div>}
               </Field>
 
               <Field label="Order date">
-                <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                  style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} />
+                <input type="date" value={date} onChange={e => {
+                  const newDate = e.target.value;
+                  setDate(newDate);
+                  // Auto-set delivery date to 6 weeks (42 days) from order date
+                  if (newDate) {
+                    const delivery = new Date(newDate);
+                    delivery.setDate(delivery.getDate() + 42);
+                    setOriginalDelivery(delivery.toISOString().split("T")[0]);
+                  }
+                }} style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} />
               </Field>
 
               {channel && (
@@ -750,7 +825,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       accept="image/*,.pdf"
                       multiple={true}
                       files={item.images || []}
-                      onAdd={val => updateItem(idx, "images", val)}
+                      onAdd={fn => updateItem(idx, "images", typeof fn === "function" ? fn(item.images || []) : fn)}
                       hint="JPG, PNG, PDF"
                     />
 
@@ -760,7 +835,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       accept="image/*,.pdf"
                       multiple={true}
                       files={item.measurementPhotos || []}
-                      onAdd={val => updateItem(idx, "measurementPhotos", val)}
+                      onAdd={fn => updateItem(idx, "measurementPhotos", typeof fn === "function" ? fn(item.measurementPhotos || []) : fn)}
                       hint="Upload measurement drawing or sketch"
                     />
 
