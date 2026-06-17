@@ -210,6 +210,7 @@ function DealDetailModal({ deal, onUpdate, onClose, onCreateOrder, role, salespe
   const [saving, setSaving] = useState(false);
   const [showLostReasons, setShowLostReasons] = useState(false);
   const [showWonConfirm, setShowWonConfirm] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     customerName: deal.customerName, customerPhone: deal.customerPhone || "",
@@ -266,6 +267,7 @@ function DealDetailModal({ deal, onUpdate, onClose, onCreateOrder, role, salespe
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <StagePill stage={deal.stage} />
             {!editing && <button onClick={() => setEditing(true)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Edit</button>}
+            {role === "admin" && <button onClick={() => setConfirmDelete(true)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 7, border: "0.5px solid #F09595", background: "transparent", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Delete</button>}
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 20 }}><i className="ti ti-x" /></button>
           </div>
         </div>
@@ -368,14 +370,47 @@ function DealDetailModal({ deal, onUpdate, onClose, onCreateOrder, role, salespe
             </div>
           )}
 
-          {deal.linkedOrderId && (
-            <div style={{ marginBottom: 14, padding: "10px 14px", background: "#EAF3DE", borderRadius: 10, border: "0.5px solid #97C459", fontSize: 13 }}>
-              <i className="ti ti-link" style={{ fontSize: 13, marginRight: 6, color: "#27500A" }} />Linked order: <span style={{ fontWeight: 600, color: "var(--color-text-info)" }}>{deal.linkedOrderId}</span>
+          {/* Linked order — show or manually set */}
+          {deal.stage === "Won" && (
+            <div style={{ marginBottom: 14 }}>
+              {deal.linkedOrderId ? (
+                <div style={{ padding: "10px 14px", background: "#EAF3DE", borderRadius: 10, border: "0.5px solid #97C459", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span><i className="ti ti-link" style={{ fontSize: 13, marginRight: 6, color: "#27500A" }} />Linked order: <span style={{ fontWeight: 600, color: "var(--color-text-info)" }}>{deal.linkedOrderId}</span></span>
+                  <button onClick={() => api.updateDeal(deal._id, { linkedOrderId: "" }).then(onUpdate)}
+                    style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "0.5px solid #97C459", background: "transparent", color: "#27500A", cursor: "pointer", fontFamily: "inherit" }}>Clear</button>
+                </div>
+              ) : (
+                <div style={{ padding: "10px 14px", background: "var(--color-background-secondary)", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)" }}>
+                  <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>Link to order</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input id={`link-order-${deal._id}`} placeholder="e.g. BL-0084" defaultValue=""
+                      style={{ flex: 1, fontSize: 13, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
+                    <button onClick={() => {
+                      const val = document.getElementById(`link-order-${deal._id}`).value.trim();
+                      if (!val) return;
+                      api.updateDeal(deal._id, { linkedOrderId: val }).then(onUpdate);
+                    }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#27500A", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Link</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {deal.stage === "Lost" && deal.lostReason && (
             <div style={{ marginBottom: 14, padding: "10px 14px", background: "#FCEBEB", borderRadius: 10, border: "0.5px solid #F09595", fontSize: 13 }}>
               Lost reason: <span style={{ fontWeight: 600, color: "#791F1F" }}>{deal.lostReason}</span>
+            </div>
+          )}
+
+          {/* Delete confirm */}
+          {confirmDelete && (
+            <div style={{ marginBottom: 14, padding: "12px 14px", background: "#FCEBEB", borderRadius: 10, border: "0.5px solid #F09595" }}>
+              <div style={{ fontSize: 13, color: "#791F1F", fontWeight: 500, marginBottom: 8 }}>Delete this deal permanently?</div>
+              <div style={{ fontSize: 12, color: "#791F1F", marginBottom: 12 }}>This cannot be undone. The deal will be removed from the pipeline.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setConfirmDelete(false)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "0.5px solid #F09595", background: "transparent", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                <button onClick={async () => { await api.deleteDeal(deal._id); onDelete(deal._id); onClose(); }}
+                  style={{ fontSize: 12, padding: "6px 16px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Delete permanently</button>
+              </div>
             </div>
           )}
 
@@ -469,6 +504,10 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
   async function loadDeals() {
     setLoading(true);
     try { setDeals(await api.fetchDeals()); } finally { setLoading(false); }
+  }
+
+  function handleDelete(id) {
+    setDeals(prev => prev.filter(d => d._id !== id));
   }
 
   function handleUpdate(updated) {
@@ -624,7 +663,7 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
       )}
 
       {showNewDeal && <NewDealModal currentUser={currentUser} salespeople={salespeople} onSave={() => { setShowNewDeal(false); loadDeals(); }} onClose={() => setShowNewDeal(false)} />}
-      {openDeal && <DealDetailModal deal={openDeal} onUpdate={handleUpdate} onClose={() => setOpenDeal(null)} onCreateOrder={onCreateOrder} role={role} salespeople={salespeople} />}
+      {openDeal && <DealDetailModal deal={openDeal} onUpdate={handleUpdate} onDelete={handleDelete} onClose={() => setOpenDeal(null)} onCreateOrder={onCreateOrder} role={role} salespeople={salespeople} />}
     </div>
   );
 }
