@@ -49,6 +49,23 @@ async function apiFetch(path, options = {}) {
 }
 
 // ── AUTH ──────────────────────────────────────────────────
+// ── USER MANAGEMENT ───────────────────────────────────────
+export async function fetchUsers() {
+  return apiFetch("/auth/users");
+}
+
+export async function createUser(data) {
+  return apiFetch("/auth/users", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateUser(id, data) {
+  return apiFetch(`/auth/users/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function deleteUser(id) {
+  return apiFetch(`/auth/users/${id}`, { method: "DELETE" });
+}
+
 export async function changePassword(username, newPassword) {
   return apiFetch("/auth/change-password", {
     method: "POST",

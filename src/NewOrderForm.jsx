@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { CHANNELS, STAGES } from "./data";
-import { fetchNextOrderId, lookupCustomer, uploadFile } from "./api";
+import { fetchNextOrderId, lookupCustomer, uploadFile, fetchUsers } from "./api";
 import { formatCurrency } from "./ui";
 
 const CHANNEL_PREFIXES = {
@@ -10,8 +10,6 @@ const CHANNEL_PREFIXES = {
 const FINISHING_OPTIONS = ["Polish", "Upholstery", "Cane work", "Glass work", "Brass work", "Other"];
 
 const POLISH_OPTIONS = ["Natural", "Honey", "Dark Teak", "Rosewood", "Espresso Brown"];
-
-const SALESPEOPLE = ["Kishore", "Rajveer", "Ramesh", "Trina", "Yash", "Mukesh", "Sarthak", "Sanskar"];
 
 const DRAFT_KEY = "induscraft_order_draft";
 
@@ -361,6 +359,17 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   }, []);
 
   const [errors, setErrors] = useState({});
+  const [salespeople, setSalespeople] = useState([]);
+
+  useEffect(() => {
+    fetchUsers().then(users => {
+      const names = users
+        .filter(u => u.role === "sales" || u.role === "admin")
+        .map(u => u.name)
+        .sort();
+      setSalespeople(names);
+    }).catch(() => {});
+  }, []);
   const [customerSuggestion, setCustomerSuggestion] = useState(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -675,7 +684,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                 <select value={salesperson} onChange={e => setSalesperson(e.target.value)}
                   style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }}>
                   <option value="">Select salesperson</option>
-                  {SALESPEOPLE.map(s => <option key={s} value={s}>{s}</option>)}
+                  {salespeople.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {errors.salesperson && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.salesperson}</div>}
               </Field>

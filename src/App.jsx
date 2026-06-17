@@ -325,7 +325,7 @@ export default function App() {
             )}
             {page === "reports" && <Reports orders={allOrders} role={role} />}
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={handleUpdateOrder} />}
-            {page === "settings" && role === "admin" && <Settings />}
+            {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
           </main>
         </>
