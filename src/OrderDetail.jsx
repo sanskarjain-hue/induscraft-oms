@@ -20,7 +20,53 @@ function TabBar({ tabs, active, onSelect }) {
   );
 }
 
-function OrderInfoTab({ order, role, onUpdate }) {
+// ── EDIT LOG ──────────────────────────────────────────────
+// Whole-order log (not per-field): each entry says who changed something and when,
+// with a short label of what kind of change it was. Newest first.
+function formatLogTime(d) {
+  const date = new Date(d);
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
+    " at " + date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+function EditLogPanel({ order }) {
+  const log = order.editLog || [];
+  const [expanded, setExpanded] = useState(false);
+  if (log.length === 0) return null;
+
+  const sorted = [...log].sort((a, b) => new Date(b.changedAt) - new Date(a.changedAt));
+  const latest = sorted[0];
+  const rest = sorted.slice(1);
+
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: rest.length > 0 && expanded ? 10 : 0 }}>
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-history" style={{ fontSize: 13, marginRight: 6 }} />
+          Last edited by <strong style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>{latest.changedBy}</strong>
+          {latest.field ? ` — ${latest.field}` : ""} &middot; {formatLogTime(latest.changedAt)}
+        </div>
+        {rest.length > 0 && (
+          <button onClick={() => setExpanded(e => !e)} style={{ fontSize: 11, padding: "3px 9px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>
+            {expanded ? "Hide history" : `+${rest.length} more`}
+          </button>
+        )}
+      </div>
+      {expanded && rest.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {rest.map((entry, i) => (
+            <div key={i} style={{ fontSize: 11, color: "var(--color-text-secondary)", paddingLeft: 19 }}>
+              <strong style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>{entry.changedBy}</strong>
+              {entry.field ? ` — ${entry.field}` : ""} &middot; {formatLogTime(entry.changedAt)}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function OrderInfoTab({ order, role, onUpdate, currentUser }) {
   const [editDispatch, setEditDispatch] = useState(false);
   const [dispatchForm, setDispatchForm] = useState(order.dispatchDetails || { partner: "", driver: "", driverPhone: "" });
 
@@ -29,12 +75,13 @@ function OrderInfoTab({ order, role, onUpdate }) {
   const isDispatched = order.items.some(i => i.stageIndex >= 6);
 
   function saveDispatch() {
-    onUpdate({ ...order, dispatchDetails: dispatchForm });
+    onUpdate({ ...order, dispatchDetails: dispatchForm, _editLogField: "Dispatch details" });
     setEditDispatch(false);
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <EditLogPanel order={order} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card>
           <SectionTitle>Customer</SectionTitle>
@@ -48,7 +95,10 @@ function OrderInfoTab({ order, role, onUpdate }) {
             <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>Address</div>
             <textarea
               defaultValue={order.customer.address || ""}
-              onBlur={e => onUpdate({ ...order, customer: { ...order.customer, address: e.target.value } })}
+              onBlur={e => {
+                if (e.target.value === (order.customer.address || "")) return;
+                onUpdate({ ...order, customer: { ...order.customer, address: e.target.value }, _editLogField: "Address" });
+              }}
               placeholder="Click to add address..."
               style={{ width: "100%", fontSize: 12, padding: "6px 8px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", resize: "vertical", fontFamily: "inherit", minHeight: 56 }}
             />
@@ -101,7 +151,8 @@ function OrderInfoTab({ order, role, onUpdate }) {
                   const updated = {
                     ...order,
                     deliveryConfirmed: true,
-                    items: order.items.map(i => ({ ...i, originalDelivery: val, currentDelivery: val }))
+                    items: order.items.map(i => ({ ...i, originalDelivery: val, currentDelivery: val })),
+                    _editLogField: "Delivery date confirmed",
                   };
                   onUpdate(updated);
                 }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
@@ -237,7 +288,10 @@ function OrderInfoTab({ order, role, onUpdate }) {
         <Card>
           <SectionTitle>Notes</SectionTitle>
           <textarea defaultValue={order.notes}
-            onBlur={e => onUpdate({ ...order, notes: e.target.value })}
+            onBlur={e => {
+              if (e.target.value === (order.notes || "")) return;
+              onUpdate({ ...order, notes: e.target.value, _editLogField: "Notes" });
+            }}
             style={{ width: "100%", fontSize: 12, padding: 10, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", resize: "vertical", fontFamily: "inherit", minHeight: 80 }} />
         </Card>
       </div>
@@ -323,14 +377,14 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   );
 
   function assignVendor(vendorId) {
-    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i) };
+    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i), _editLogField: "Vendor assignment" };
     onUpdate(updated);
     setShowDropdown(false);
     setSearch("");
   }
 
   function unassign() {
-    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: null, vendorCost: 0, committedDate: "" } : i) };
+    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: null, vendorCost: 0, committedDate: "" } : i), _editLogField: "Vendor assignment" };
     onUpdate(updated);
   }
 
@@ -471,13 +525,20 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
           <div>
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Committed delivery</div>
             <input type="date" defaultValue={item.committedDate || ""}
-              onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, committedDate: e.target.value } : i) })}
+              onBlur={e => {
+                if (e.target.value === (item.committedDate || "")) return;
+                onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, committedDate: e.target.value } : i), _editLogField: "Committed delivery date" });
+              }}
               style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Vendor cost (₹)</div>
             <input type="number" defaultValue={item.vendorCost || ""}
-              onBlur={e => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorCost: parseFloat(e.target.value) || 0 } : i) })}
+              onBlur={e => {
+                const parsed = parseFloat(e.target.value) || 0;
+                if (parsed === (item.vendorCost || 0)) return;
+                onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorCost: parsed } : i), _editLogField: "Vendor cost" });
+              }}
               style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
           </div>
         </div>
@@ -487,6 +548,39 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
 }
 
 function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
+  // Salespeople (and admins) can update product images for an item at any time,
+  // independent of which stage it's in. This logs an edit-log entry so it's clear
+  // who changed the reference photos and when.
+  function addItemImages(itemId, newImages) {
+    const updated = {
+      ...order,
+      items: order.items.map(i => i.id === itemId ? { ...i, images: [...(i.images || []), ...newImages] } : i),
+      _editLogField: "Product images",
+    };
+    onUpdate(updated);
+  }
+
+  function removeItemImage(itemId, imgIdx) {
+    const updated = {
+      ...order,
+      items: order.items.map(i => i.id === itemId ? { ...i, images: (i.images || []).filter((_, idx) => idx !== imgIdx) } : i),
+      _editLogField: "Product images",
+    };
+    onUpdate(updated);
+  }
+
+  function handleFileSelect(itemId, fileList) {
+    Array.from(fileList).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        addItemImages(itemId, [{ name: file.name, type: file.type, data: ev.target.result }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const canEditImages = role === "admin" || role === "sales";
+
   return (
     <div>
       {order.items.map(item => (
@@ -518,46 +612,65 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
               ))}
             </div>
 
-            {/* Images */}
-            {item.images && item.images.length > 0 && (
-              <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 10, marginBottom: 10 }}>
-                <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Product images ({item.images.length})</div>
+            {/* Images — viewable always, editable any time by admin/sales (not gated by stage) */}
+            <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Product images {item.images && item.images.length > 0 ? `(${item.images.length})` : ""}
+                </div>
+                {canEditImages && (
+                  <label style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                    <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update images
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(item.id, e.target.files); e.target.value = ""; }} />
+                  </label>
+                )}
+              </div>
+              {item.images && item.images.length > 0 ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {item.images.map((img, i) => {
                     const isImage = img.type && img.type.startsWith("image/");
+                    const src = img.url || img.data;
                     return (
-                      <div key={i} style={{ width: 72, height: 72, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", overflow: "hidden", cursor: "pointer" }}
-                        onClick={() => {
-                          const src = img.url || img.data;
-                          if (!src) return;
-                          if (src.startsWith("http")) {
-                            window.open(src, "_blank");
-                          } else {
-                            // base64 — Chrome blocks window.open with data: URLs, use a blob URL instead
-                            fetch(src).then(r => r.blob()).then(blob => {
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.target = "_blank";
-                              a.click();
-                              setTimeout(() => URL.revokeObjectURL(url), 1000);
-                            });
-                          }
-                        }}>
-                        {isImage ? (
-                          <img src={img.url || img.data} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                            <i className="ti ti-file" style={{ fontSize: 20, color: "var(--color-text-secondary)" }} />
-                            <div style={{ fontSize: 8, color: "var(--color-text-secondary)", textAlign: "center", padding: "0 4px" }}>{img.name}</div>
-                          </div>
+                      <div key={i} style={{ position: "relative", width: 72, height: 72 }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", overflow: "hidden", cursor: "pointer" }}
+                          onClick={() => {
+                            if (!src) return;
+                            if (src.startsWith("http")) {
+                              window.open(src, "_blank");
+                            } else {
+                              fetch(src).then(r => r.blob()).then(blob => {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.target = "_blank";
+                                a.click();
+                                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                              });
+                            }
+                          }}>
+                          {isImage && src ? (
+                            <img src={src} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                              <i className="ti ti-file" style={{ fontSize: 20, color: "var(--color-text-secondary)" }} />
+                              <div style={{ fontSize: 8, color: "var(--color-text-secondary)", textAlign: "center", padding: "0 4px" }}>{img.name}</div>
+                            </div>
+                          )}
+                        </div>
+                        {canEditImages && (
+                          <button onClick={() => removeItemImage(item.id, i)} title="Remove image"
+                            style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <i className="ti ti-x" />
+                          </button>
                         )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No images uploaded yet.</div>
+              )}
+            </div>
 
             {/* Hardware */}
             {item.hardware && item.hardware.length > 0 && (
@@ -625,7 +738,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
 
 function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
   const [delayModal, setDelayModal] = useState(null);
-  const [qcState, setQcState] = useState({}); // itemId -> {notes, status}
+  const [qcState, setQcState] = useState({});
 
   function canAdvance(stageIndex) {
     if (role === "admin") return true;
@@ -726,7 +839,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{item.name}</div>
-                {/* Vendor visible to Admin and QC only */}
                 {(role === "admin" || role === "qc") && (
                   <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
                     {vendor ? `${vendor.name} · ${vendor.phone}` : "No vendor assigned"}
@@ -792,7 +904,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                           QC {item.qcStatus === "pass" ? "Passed" : "Failed"}{item.qcNotes ? ` — ${item.qcNotes}` : ""}
                         </div>
                       )}
-                      {/* Raw photo upload at raw ready stage — QC uploads, salesperson approves before polishing */}
                       {isActive && stageName === "Raw ready" && (
                         <div style={{ marginTop: 8 }}>
                           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>
@@ -872,7 +983,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         </div>
                       )}
 
-                      {/* QC stage — full interaction */}
                       {isActive && stageName === "QC" && (
                         <div style={{ marginTop: 8 }}>
                           {!localQC.submitted ? (
@@ -908,7 +1018,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         </div>
                       )}
 
-                      {/* Packed — packet count */}
                       {isActive && stageName === "Packed" && (
                         <div style={{ marginTop: 8 }}>
                           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>Number of packets for this item</div>
@@ -1068,7 +1177,7 @@ function PaymentsTab({ order, role, onUpdate }) {
 
   function addPayment() {
     if (!newPayment.amount || !newPayment.date) return;
-    const updated = { ...order, payments: [...order.payments, { id: `p${Date.now()}`, date: newPayment.date, amount: parseInt(newPayment.amount), mode: newPayment.mode, ref: newPayment.ref, by: "Current user" }] };
+    const updated = { ...order, payments: [...order.payments, { id: `p${Date.now()}`, date: newPayment.date, amount: parseInt(newPayment.amount), mode: newPayment.mode, ref: newPayment.ref, by: "Current user" }], _editLogField: "Payment logged" };
     onUpdate(updated);
     setNewPayment({ amount: "", date: "", mode: "UPI", ref: "", notes: "" });
   }
@@ -1187,6 +1296,7 @@ function EditOrderModal({ order, onSave, onClose }) {
       value: parseFloat(form.value) || order.value,
       notes: form.notes,
       customer: { name: form.custName, phone: form.custPhone, address: form.custAddress },
+      _editLogField: "Order info",
     });
   }
 
@@ -1261,11 +1371,66 @@ function EditOrderModal({ order, onSave, onClose }) {
   );
 }
 
-export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onVendorClick, currentUser, onVendorCreated }) {
+// ── DELETE ORDER MODAL ────────────────────────────────────
+// Deliberately distinct from the Archive confirmation: stronger warning language,
+// requires typing the order ID to confirm, and is visually red throughout —
+// this is the irreversible action, Archive is the reversible one.
+function DeleteOrderModal({ order, onConfirm, onClose }) {
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const canDelete = confirmText.trim() === order.id;
+
+  async function handleDelete() {
+    if (!canDelete) return;
+    setDeleting(true);
+    setError("");
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err.message || "Failed to delete order");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: 14, padding: 28, width: 420, boxShadow: "0 10px 40px rgba(0,0,0,0.2)", border: "1px solid #F09595" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <i className="ti ti-alert-triangle" style={{ fontSize: 20, color: "#791F1F" }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: "#791F1F" }}>Permanently delete this order?</div>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16, lineHeight: 1.5 }}>
+          This removes <strong style={{ color: "var(--color-text-primary)" }}>{order.id}</strong> and everything in it — line items, photos, payment history, vendor assignments — permanently. This is different from archiving and <strong>cannot be undone</strong>.
+        </div>
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6 }}>
+          Type <strong style={{ color: "var(--color-text-primary)" }}>{order.id}</strong> to confirm
+        </div>
+        <input
+          value={confirmText}
+          onChange={e => setConfirmText(e.target.value)}
+          placeholder={order.id}
+          style={{ width: "100%", fontSize: 14, padding: "8px 10px", borderRadius: 8, border: "0.5px solid #F09595", background: "#FCEBEB", color: "var(--color-text-primary)", fontFamily: "inherit", marginBottom: 16 }}
+        />
+        {error && <div style={{ fontSize: 12, color: "#791F1F", marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button onClick={handleDelete} disabled={!canDelete || deleting}
+            style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "none", background: canDelete ? "#791F1F" : "#cccccc", color: "white", cursor: canDelete ? "pointer" : "not-allowed", fontFamily: "inherit", fontWeight: 500 }}>
+            {deleting ? "Deleting..." : "Delete permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onDelete, onVendorClick, currentUser, onVendorCreated }) {
   const [tab, setTab] = useState("Order info");
   const [showPrint, setShowPrint] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const maxStageIdx = Math.max(...order.items.map(i => i.stageIndex));
   const channelColors = { Bangalore: "blue", Pune: "gray", Jodhpur: "teal", Website: "blue", Wholesale: "purple" };
 
@@ -1274,6 +1439,11 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
   const canSeeVendors = role === "admin" || role === "qc";
 
   const tabs = ["Order info", "Line items", "Order tracker", ...(canSeeVendors ? ["Vendors & production"] : []), ...(canSeePayments ? ["Payments"] : []), ...(role === "admin" ? ["Costs"] : [])];
+
+  async function handleDeleteConfirmed() {
+    await onDelete(order.id);
+    setShowDeleteConfirm(false);
+  }
 
   return (
     <div>
@@ -1293,6 +1463,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
           <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
           {role === "admin" && <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>}
           {role === "admin" && <Btn variant="danger" onClick={() => setShowArchiveConfirm(true)}><i className="ti ti-archive" style={{ fontSize: 13 }} /> Archive</Btn>}
+          {role === "admin" && <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}><i className="ti ti-trash" style={{ fontSize: 13 }} /> Delete</Btn>}
         </div>
       </div>
       {showPrint && <PrintView order={order} vendors={vendors} onClose={() => setShowPrint(false)} />}
@@ -1302,20 +1473,23 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
           <div style={{ background: "var(--color-background-primary)", borderRadius: 14, padding: 28, width: 380, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Archive this order?</div>
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 20 }}>
-              The order will be removed from the active dashboard and moved to Past Orders. This can be undone.
+              The order will be removed from the active dashboard and moved to Past Orders. This can be undone — use Restore from Past Orders to bring it back.
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setShowArchiveConfirm(false)} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-              <button onClick={() => { onUpdate({ ...order, status: "archived" }); setShowArchiveConfirm(false); onBack(); }} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Archive</button>
+              <button onClick={() => { onUpdate({ ...order, status: "archived", _editLogField: "Archived" }); setShowArchiveConfirm(false); onBack(); }} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Archive</button>
             </div>
           </div>
         </div>
+      )}
+      {showDeleteConfirm && (
+        <DeleteOrderModal order={order} onConfirm={handleDeleteConfirmed} onClose={() => setShowDeleteConfirm(false)} />
       )}
       <div style={{ background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0", border: "0.5px solid var(--color-border-tertiary)", borderBottom: "none" }}>
         <TabBar tabs={tabs} active={tab} onSelect={setTab} />
       </div>
       <div style={{ background: "var(--color-background-primary)", borderRadius: "0 0 12px 12px", border: "0.5px solid var(--color-border-tertiary)", borderTop: "none", padding: 16, marginBottom: 12 }}>
-        {tab === "Order info" && <OrderInfoTab order={order} role={role} onUpdate={onUpdate} />}
+        {tab === "Order info" && <OrderInfoTab order={order} role={role} onUpdate={onUpdate} currentUser={currentUser} />}
         {tab === "Line items" && <LineItemsTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} onVendorCreated={onVendorCreated} />}
         {tab === "Order tracker" && <TrackerTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} currentUser={currentUser} />}
         {tab === "Vendors & production" && canSeeVendors && <VendorsTab order={order} vendors={vendors} role={role} onVendorClick={onVendorClick} />}

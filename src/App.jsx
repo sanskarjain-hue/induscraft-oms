@@ -186,18 +186,37 @@ export default function App() {
 
   const selectedOrder = allOrders.find(o => o.id === selectedOrderId || o._id === selectedOrderId);
 
+  // updatedOrder may carry an optional _editLogField — a short string like "Address" or
+  // "Product images" — set by OrderDetail.jsx when the change should be recorded in the
+  // order's edit history. The backend appends { changedBy, field, changedAt } server-side
+  // using the authenticated user's name, so the client never has to trust its own clock
+  // or identity for the log entry itself.
   async function handleUpdateOrder(updatedOrder) {
+    const { _editLogField, ...orderToSave } = updatedOrder;
     try {
-      // Use _id or original id to find the order for the API call
-      const originalOrder = allOrders.find(o => o._id === updatedOrder._id);
-      const originalId = originalOrder?.id || updatedOrder.id;
-      const saved = await api.updateOrder(originalId, updatedOrder);
+      const originalOrder = allOrders.find(o => o._id === orderToSave._id);
+      const originalId = originalOrder?.id || orderToSave.id;
+      const payload = _editLogField
+        ? { ...orderToSave, editLogEntry: { field: _editLogField } }
+        : orderToSave;
+      const saved = await api.updateOrder(originalId, payload);
       setAllOrders(prev => prev.map(o => (o._id === saved._id) ? saved : o));
-      // If order ID changed, update the selected order ID so the detail view stays open
       if (saved.id !== originalId) setSelectedOrderId(saved.id);
     } catch (err) {
       console.error("Update order error:", err);
-      setAllOrders(prev => prev.map(o => o._id === updatedOrder._id ? updatedOrder : o));
+      setAllOrders(prev => prev.map(o => o._id === orderToSave._id ? orderToSave : o));
+    }
+  }
+
+  async function handleDeleteOrder(orderId) {
+    try {
+      await api.deleteOrder(orderId);
+      setAllOrders(prev => prev.filter(o => o.id !== orderId));
+      setSelectedOrderId(null);
+      navigate("orders", null);
+    } catch (err) {
+      console.error("Delete order error:", err);
+      throw err; // let the caller show an error to the user
     }
   }
 
@@ -303,6 +322,7 @@ export default function App() {
               <OrderDetail order={selectedOrder} role={role} vendors={allVendors}
                 onBack={() => setSelectedOrderId(null)}
                 onUpdate={handleUpdateOrder}
+                onDelete={handleDeleteOrder}
                 onVendorClick={(vid) => navigate("vendors", null, vid)}
                 onVendorCreated={v => setAllVendors(prev => [...prev, v])}
                 currentUser={currentUser} />

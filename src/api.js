@@ -48,7 +48,6 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 
-// ── AUTH ──────────────────────────────────────────────────
 // ── USER MANAGEMENT ───────────────────────────────────────
 export async function fetchUsers() {
   return apiFetch("/auth/users");
@@ -118,6 +117,12 @@ export async function updateOrder(id, orderData) {
     method: "PUT",
     body: JSON.stringify(orderData),
   });
+}
+
+// Permanently deletes an order. Distinct from archiving (updateOrder with status: "archived"),
+// which is reversible. This is not — admin only, confirmed in the UI before calling.
+export async function deleteOrder(id) {
+  return apiFetch(`/orders/${id}`, { method: "DELETE" });
 }
 
 export async function advanceItemStage(orderId, itemId, data) {
