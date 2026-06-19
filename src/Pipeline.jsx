@@ -205,7 +205,7 @@ function NewDealModal({ onSave, onClose, currentUser, salespeople }) {
 }
 
 // ── DEAL DETAIL MODAL ─────────────────────────────────────
-function DealDetailModal({ deal, onUpdate, onClose, onCreateOrder, role, salespeople }) {
+function DealDetailModal({ deal, onUpdate, onDelete, onClose, onCreateOrder, role, salespeople }) {
   const [logText, setLogText] = useState("");
   const [saving, setSaving] = useState(false);
   const [showLostReasons, setShowLostReasons] = useState(false);
