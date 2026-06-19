@@ -1,20 +1,12 @@
 import { useState } from "react";
-import { Badge, channelVariant, stageVariant, formatCurrency } from "./ui";
+import { Badge, channelVariant, stageVariant, formatCurrency, isPastOrder } from "./ui";
 import { STAGES, CHANNELS } from "./data";
-
-const isPast = o => {
-  if (o.status === "archived") return true;
-  if (!o.items.every(i => i.stageIndex === 8)) return false;
-  const latest = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
-  if (!latest) return false;
-  return (new Date() - new Date(latest)) / (1000 * 60 * 60 * 24) >= 10;
-};
 
 export default function PastOrders({ orders, role, onOrderClick, onUpdate }) {
   const [channelFilter, setChannelFilter] = useState("All");
   const [search, setSearch] = useState("");
 
-  const pastOrders = orders.filter(isPast);
+  const pastOrders = orders.filter(isPastOrder);
 
   const filtered = pastOrders.filter(o => {
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;

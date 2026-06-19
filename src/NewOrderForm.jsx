@@ -63,9 +63,15 @@ function emptyItem() {
   };
 }
 
+// ── FILE UPLOAD AREA ──────────────────────────────────────
+// Fix: the upload zone previously had onPaste on a wrapper div with nothing focusable
+// inside it, so Ctrl+V never had a target to deliver the paste event to. Now the zone
+// itself is a focusable element (tabIndex=0), gets focus on click, and shows a visible
+// focus ring so it's clear paste will land there.
 function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint }) {
   const ref = useRef();
-  const [pasteActive, setPasteActive] = useState(false);
+  const zoneRef = useRef();
+  const [focused, setFocused] = useState(false);
 
   async function readFiles(fileList) {
     const fileArray = Array.from(fileList);
@@ -146,21 +152,31 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
   const isImage = (f) => f.type && f.type.startsWith("image/");
 
   return (
-    <div onPaste={handlePaste}>
+    <div>
       <div style={LABEL}>{label}</div>
       <div
-        onClick={() => ref.current.click()}
+        ref={zoneRef}
+        tabIndex={0}
+        onPaste={handlePaste}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onClick={() => { zoneRef.current?.focus(); ref.current.click(); }}
         style={{
-          border: "0.5px dashed var(--color-border-secondary)",
+          border: focused ? "1.5px solid #C0392B" : "0.5px dashed var(--color-border-secondary)",
           borderRadius: 10, padding: "18px 16px", textAlign: "center",
           cursor: "pointer", background: "var(--color-background-secondary)",
+          outline: "none",
+          boxShadow: focused ? "0 0 0 3px rgba(192,57,43,0.12)" : "none",
+          transition: "border-color 0.15s, box-shadow 0.15s",
         }}
         onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); readFiles(e.dataTransfer.files); }}
       >
         <i className="ti ti-upload" style={{ fontSize: 22, color: "var(--color-text-secondary)", display: "block", marginBottom: 6 }} />
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Click or drag to upload</div>
-        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 3 }}>or <strong>Ctrl+V</strong> to paste a screenshot</div>
+        <div style={{ fontSize: 11, color: focused ? "#C0392B" : "var(--color-text-secondary)", marginTop: 3, fontWeight: focused ? 600 : 400 }}>
+          {focused ? "Ready — press Ctrl+V to paste" : <>or click here, then <strong>Ctrl+V</strong> to paste a screenshot</>}
+        </div>
         {hint && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>{hint}</div>}
       </div>
       <input ref={ref} type="file" accept={accept} multiple={multiple} style={{ display: "none" }} onChange={handleFiles} />
@@ -169,7 +185,7 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
           {files.map((f, i) => (
             <div key={i} style={{ position: "relative" }}>
               {isImage(f) ? (
-                <img src={f.data} alt={f.name}
+                <img src={f.url || f.data} alt={f.name}
                   style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", display: "block" }} />
               ) : (
                 <div style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -241,8 +257,6 @@ function ShopifyLoader({ idx, item, updateItem, fetchShopifyProduct }) {
     setSelectedVariantId(null);
   }
 
-  // Group options for display
-  const options = product ? product.product.options : [];
   const variants = product ? product.product.variants : [];
 
   return (
@@ -350,6 +364,13 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [notes, setNotes] = useState("");
   const [originalDelivery, setOriginalDelivery] = useState("");
 
+  const [errors, setErrors] = useState({});
+  const [salespeople, setSalespeople] = useState([]);
+  const [customerSuggestion, setCustomerSuggestion] = useState(null);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+
   // If opened from a Won deal, fetch the order ID and clear prefill
   useEffect(() => {
     if (prefill?.channel) {
@@ -357,9 +378,6 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       if (onPrefillUsed) onPrefillUsed();
     }
   }, []);
-
-  const [errors, setErrors] = useState({});
-  const [salespeople, setSalespeople] = useState([]);
 
   useEffect(() => {
     fetchUsers().then(users => {
@@ -370,10 +388,6 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       setSalespeople(names);
     }).catch(() => {});
   }, []);
-  const [customerSuggestion, setCustomerSuggestion] = useState(null);
-  const [lookingUp, setLookingUp] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [hasDraft, setHasDraft] = useState(false);
 
   // Check for existing draft on mount
   useEffect(() => {
@@ -556,7 +570,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   }
 
   function handleSave() {
-    if (!validateStep(5)) return;
+    if (!validateStep(4)) return;
     const orderId = customOrderId;
     const totalValue = items.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
     const newOrder = {
@@ -598,6 +612,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       })),
       payments: [],
     };
+    clearDraftOnSave();
     onSave(newOrder);
   }
 
@@ -748,7 +763,6 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
               <Field label="Address (optional)">
                 <textarea value={custAddress} onChange={e => setCustAddress(e.target.value)}
                   style={{ ...INPUT, minHeight: 80, resize: "vertical", background: "#f5f5f3", color: "#1a1a1a" }} placeholder="Full delivery address" />
-
               </Field>
             </div>
           )}

@@ -1,59 +1,8 @@
 import { useState } from "react";
 import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
-import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency } from "./ui";
+import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
 import { STAGES } from "./data";
-
-// ── STAGE TIMER ───────────────────────────────────────────
-const STAGE_DURATIONS = {
-  0: 3,   // Looking for vendor — 3 days
-  1: 14,  // Processing started — 14 days
-  2: null, // Raw ready — gate, no timer
-  3: 7,   // Finishing — 7 days
-  4: 7,   // QC — 7 days
-  5: 7,   // Packed — 7 days
-  6: 7,   // Dispatched — 7 days
-  7: null, // Delivered to warehouse — paused (awaiting customer)
-  8: null, // Delivered to customer — done
-};
-
-function getStageTimer(item, orderDate) {
-  const stage = item.stageIndex;
-  const duration = STAGE_DURATIONS[stage];
-  if (duration === null || duration === undefined) return null;
-
-  let enteredAt = null;
-  if (item.stageHistory && item.stageHistory.length > 0) {
-    const entry = [...item.stageHistory].reverse().find(h => h.stageIndex === stage);
-    if (entry) enteredAt = new Date(entry.enteredAt);
-  }
-  if (!enteredAt && stage === 0 && orderDate) {
-    enteredAt = new Date(orderDate);
-  }
-  if (!enteredAt) return null;
-
-  const deadline = new Date(enteredAt);
-  deadline.setDate(deadline.getDate() + duration);
-  const daysLeft = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
-  return { daysLeft, deadline };
-}
-
-function TimerPill({ item, orderDate }) {
-  const timer = getStageTimer(item, orderDate);
-  if (!timer) return null;
-  const { daysLeft } = timer;
-  const color = daysLeft > 2 ? { bg: "#EAF3DE", fg: "#27500A" } :
-                daysLeft > 0 ? { bg: "#FAEEDA", fg: "#633806" } :
-                { bg: "#FCEBEB", fg: "#791F1F" };
-  const label = daysLeft > 0
-    ? `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`
-    : `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? "s" : ""}`;
-  return (
-    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500, whiteSpace: "nowrap" }}>
-      <i className="ti ti-clock" style={{ fontSize: 10, marginRight: 3 }} />{label}
-    </span>
-  );
-}
 
 function TabBar({ tabs, active, onSelect }) {
   return (
@@ -89,12 +38,21 @@ function OrderInfoTab({ order, role, onUpdate }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Card>
           <SectionTitle>Customer</SectionTitle>
-          {[["Name", order.customer.name], ["Phone", order.customer.phone], ["Address", order.customer.address]].map(([l, v]) => (
+          {[["Name", order.customer.name], ["Phone", order.customer.phone]].map(([l, v]) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{l}</span>
               <span style={{ fontSize: 13, fontWeight: 500, textAlign: "right", maxWidth: 200 }}>{v}</span>
             </div>
           ))}
+          <div style={{ padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>Address</div>
+            <textarea
+              defaultValue={order.customer.address || ""}
+              onBlur={e => onUpdate({ ...order, customer: { ...order.customer, address: e.target.value } })}
+              placeholder="Click to add address..."
+              style={{ width: "100%", fontSize: 12, padding: "6px 8px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", resize: "vertical", fontFamily: "inherit", minHeight: 56 }}
+            />
+          </div>
         </Card>
         <Card>
           <SectionTitle>Order summary</SectionTitle>
@@ -287,6 +245,68 @@ function OrderInfoTab({ order, role, onUpdate }) {
   );
 }
 
+// ── STAGE PHOTO STRIP ─────────────────────────────────────
+function StagePhotoStrip({ photos, label, canUpload, onUpload }) {
+  function handleFiles(e) {
+    Array.from(e.target.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const updated = [...photos, { name: file.name, type: file.type, data: ev.target.result }];
+        onUpload(updated);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  }
+
+  if (!canUpload && photos.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {photos.map((photo, pi) => {
+          const src = photo.url || photo.data;
+          return (
+            <div key={pi} style={{ position: "relative", width: 64, height: 64 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)" }}>
+                {src
+                  ? <img src={src} alt={photo.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-photo" style={{ fontSize: 18, color: "var(--color-text-secondary)" }} /></div>
+                }
+              </div>
+              {src && (
+                <a onClick={e => {
+                  if (src.startsWith("http")) return; // normal download for cloudinary
+                  e.preventDefault();
+                  fetch(src).then(r => r.blob()).then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = photo.name || "photo";
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  });
+                }} href={src} download={photo.name || "photo"} title="Download"
+                  style={{ position: "absolute", bottom: 2, right: 2, width: 18, height: 18, borderRadius: 4, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                  <i className="ti ti-download" style={{ fontSize: 11, color: "white" }} />
+                </a>
+              )}
+            </div>
+          );
+        })}
+        {canUpload && (
+          <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3, flexShrink: 0 }}>
+            <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
+            <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
+            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFiles} />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── VENDOR ASSIGN ─────────────────────────────────────────
 function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   const [search, setSearch] = useState("");
@@ -473,8 +493,8 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
         <div key={item.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
             <div style={{ width: 44, height: 44, borderRadius: 8, background: "var(--color-background-tertiary)", border: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-              {item.images && item.images.length > 0 && item.images[0].data ? (
-                <img src={item.images[0].data} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              {item.images && item.images.length > 0 && (item.images[0].url || item.images[0].data) ? (
+                <img src={item.images[0].url || item.images[0].data} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <i className="ti ti-armchair" style={{ fontSize: 20, color: "var(--color-text-secondary)" }} />
               )}
@@ -507,7 +527,23 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                     const isImage = img.type && img.type.startsWith("image/");
                     return (
                       <div key={i} style={{ width: 72, height: 72, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", overflow: "hidden", cursor: "pointer" }}
-                        onClick={() => { const src = img.url || img.data; if (src) window.open(src, "_blank"); }}>
+                        onClick={() => {
+                          const src = img.url || img.data;
+                          if (!src) return;
+                          if (src.startsWith("http")) {
+                            window.open(src, "_blank");
+                          } else {
+                            // base64 — Chrome blocks window.open with data: URLs, use a blob URL instead
+                            fetch(src).then(r => r.blob()).then(blob => {
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.target = "_blank";
+                              a.click();
+                              setTimeout(() => URL.revokeObjectURL(url), 1000);
+                            });
+                          }
+                        }}>
                         {isImage ? (
                           <img src={img.url || img.data} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
@@ -763,31 +799,12 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             QC team must upload raw product photos. Salesperson approval required before polishing can begin.
                           </div>
                           {(role === "admin" || role === "qc") && (
-                            <div style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>Raw product photos</div>
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                {(item.rawPhotos || []).map((photo, pi) => (
-                                  <div key={pi} style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: "0.5px solid var(--color-border-secondary)" }}>
-                                    {photo.data ? <img src={photo.data} alt="Raw" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-photo" style={{ fontSize: 18, color: "var(--color-text-secondary)" }} /></div>}
-                                  </div>
-                                ))}
-                                <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3 }}>
-                                  <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
-                                  <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
-                                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => {
-                                    Array.from(e.target.files).forEach(file => {
-                                      const reader = new FileReader();
-                                      reader.onload = ev => {
-                                        const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotos: [...(i.rawPhotos || []), { name: file.name, type: file.type, data: ev.target.result }] } : i) };
-                                        onUpdate(updated);
-                                      };
-                                      reader.readAsDataURL(file);
-                                    });
-                                    e.target.value = "";
-                                  }} />
-                                </label>
-                              </div>
-                            </div>
+                            <StagePhotoStrip
+                              photos={item.rawPhotos || []}
+                              label="Raw product photos"
+                              canUpload={true}
+                              onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotos: newPhotos } : i) })}
+                            />
                           )}
                           {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (role === "admin" || role === "sales") && (
                             <div style={{ marginTop: 8 }}>
@@ -807,11 +824,23 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               <i className="ti ti-check" style={{ fontSize: 13, marginRight: 4 }} />Raw photos approved — polishing can begin
                             </div>
                           )}
-                          {/* Block advance to finishing unless approved */}
                         </div>
                       )}
 
-                      {isDone && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Completed</div>}
+                      {isDone && (
+                        <div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Completed</div>
+                          {stageName === "Raw ready" && (item.rawPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.rawPhotos} label="Raw product photos" canUpload={false} />
+                          )}
+                          {stageName === "Finishing" && (item.finishingPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.finishingPhotos} label="In-progress photos" canUpload={false} />
+                          )}
+                          {stageName === "QC" && (item.qcPhotos || []).length > 0 && (
+                            <StagePhotoStrip photos={item.qcPhotos} label="QC inspection photos" canUpload={false} />
+                          )}
+                        </div>
+                      )}
 
                       {isActive && stageName === "Processing started" && vendor && (
                         <div style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", padding: "8px 10px", borderRadius: 8, marginTop: 4 }}>
@@ -834,6 +863,12 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               </div>
                             );
                           })}
+                          <StagePhotoStrip
+                            photos={item.finishingPhotos || []}
+                            label="In-progress photos"
+                            canUpload={role === "admin" || role === "qc"}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, finishingPhotos: newPhotos } : i) })}
+                          />
                         </div>
                       )}
 
@@ -864,15 +899,12 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>QC submitted.</div>
                           )}
 
-                          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px", margin: "12px 0 8px" }}>QC photos & videos</div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            {(role === "admin" || role === "qc") && (
-                              <div style={{ width: 56, height: 56, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer" }}>
-                                <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
-                                <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>Upload</div>
-                              </div>
-                            )}
-                          </div>
+                          <StagePhotoStrip
+                            photos={item.qcPhotos || []}
+                            label="QC inspection photos"
+                            canUpload={role === "admin" || role === "qc"}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, qcPhotos: newPhotos } : i) })}
+                          />
                         </div>
                       )}
 
@@ -936,7 +968,6 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
 }
 
 function VendorsTab({ order, vendors, role, onVendorClick }) {
-  // Sales cannot see vendor tab at all — handled by tab visibility
   const totalVendorCost = order.items.reduce((s, i) => s + (i.vendorCost || 0), 0);
   return (
     <div>
@@ -1262,8 +1293,6 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
           <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
           {role === "admin" && <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>}
           {role === "admin" && <Btn variant="danger" onClick={() => setShowArchiveConfirm(true)}><i className="ti ti-archive" style={{ fontSize: 13 }} /> Archive</Btn>}
-          <Btn><i className="ti ti-download" style={{ fontSize: 13 }} /> Export PO</Btn>
-          <Btn variant="danger"><i className="ti ti-flag" style={{ fontSize: 13 }} /> Add flag</Btn>
         </div>
       </div>
       {showPrint && <PrintView order={order} vendors={vendors} onClose={() => setShowPrint(false)} />}

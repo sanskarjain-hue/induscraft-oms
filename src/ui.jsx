@@ -150,3 +150,106 @@ export function MiniPipeline({ stageIndex, total = 9 }) {
     </div>
   );
 }
+
+// ── STAGE TIMERS ──────────────────────────────────────────
+// Consolidated from Dashboard.jsx + OrderDetail.jsx (previously duplicated verbatim in both).
+// Stage durations are business-rule SLAs per production stage (see Order tracker spec).
+export const STAGE_DURATIONS = {
+  0: 3,    // Looking for vendor — 3 days
+  1: 14,   // Processing started — 14 days
+  2: null, // Raw ready — gate, no timer
+  3: 7,    // Finishing — 7 days
+  4: 7,    // QC — 7 days
+  5: 7,    // Packed — 7 days
+  6: 7,    // Dispatched — 7 days
+  7: null, // Delivered to warehouse — paused (awaiting customer)
+  8: null, // Delivered to customer — done
+};
+
+export function getStageTimer(item, orderDate) {
+  const stage = item.stageIndex;
+  const duration = STAGE_DURATIONS[stage];
+  if (duration === null || duration === undefined) return null;
+
+  let enteredAt = null;
+  if (item.stageHistory && item.stageHistory.length > 0) {
+    const entry = [...item.stageHistory].reverse().find(h => h.stageIndex === stage);
+    if (entry) enteredAt = new Date(entry.enteredAt);
+  }
+  if (!enteredAt && stage === 0 && orderDate) {
+    enteredAt = new Date(orderDate);
+  }
+  if (!enteredAt) return null;
+
+  const deadline = new Date(enteredAt);
+  deadline.setDate(deadline.getDate() + duration);
+  const daysLeft = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
+  return { daysLeft, deadline };
+}
+
+export function getOrderTimerStatus(order) {
+  let worst = null;
+  for (const item of order.items) {
+    const t = getStageTimer(item, order.date);
+    if (!t) continue;
+    if (!worst || t.daysLeft < worst.daysLeft) worst = t;
+  }
+  return worst;
+}
+
+function timerColor(daysLeft) {
+  return daysLeft > 2 ? { bg: "#EAF3DE", fg: "#27500A" }
+       : daysLeft > 0 ? { bg: "#FAEEDA", fg: "#633806" }
+       : { bg: "#FCEBEB", fg: "#791F1F" };
+}
+
+export function TimerPill({ item, orderDate, compact = false }) {
+  const timer = getStageTimer(item, orderDate);
+  if (!timer) return null;
+  const { daysLeft } = timer;
+  const color = timerColor(daysLeft);
+  const label = daysLeft > 0
+    ? compact ? `${daysLeft}d` : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`
+    : compact ? `${Math.abs(daysLeft)}d late` : `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? "s" : ""}`;
+  return (
+    <span style={{ fontSize: compact ? 10 : 11, padding: compact ? "1px 6px" : "2px 8px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500, whiteSpace: "nowrap" }}>
+      {!compact && <i className="ti ti-clock" style={{ fontSize: 10, marginRight: 3 }} />}
+      {label}
+    </span>
+  );
+}
+
+// Compact pill used in dashboard/list table cells — takes a pre-computed timer object directly
+export function OrderTimerCell({ order }) {
+  const t = getOrderTimerStatus(order);
+  if (!t) return <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>—</span>;
+  const { daysLeft } = t;
+  const color = timerColor(daysLeft);
+  const label = daysLeft > 0 ? `${daysLeft}d left` : `${Math.abs(daysLeft)}d late`;
+  return <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 6, background: color.bg, color: color.fg, fontWeight: 500 }}>{label}</span>;
+}
+
+// ── ORDER STATUS HELPERS ──────────────────────────────────
+// Consolidated from Dashboard.jsx / OrdersList.jsx / PastOrders.jsx, which each had a
+// slightly different copy of these. This version matches PastOrders' (the most correct one —
+// it checks status === "archived" before evaluating delivery-based completion).
+export function isNewOrder(o) {
+  return !o.deliveryConfirmed && o.items.every(i => i.stageIndex === 0);
+}
+
+export function isPastOrder(o) {
+  if (o.status === "archived") return true;
+  if (!o.items.every(i => i.stageIndex === 8)) return false;
+  const latest = o.items.reduce((a, i) => i.currentDelivery > a ? i.currentDelivery : a, "");
+  if (!latest) return false;
+  return (new Date() - new Date(latest)) / (1000 * 60 * 60 * 24) >= 10;
+}
+
+// Image src resolver — items may carry either a Cloudinary `url` or legacy base64 `data`.
+// Centralised because this exact ternary was duplicated (and inconsistently applied — OrdersList
+// was missing the `url` branch entirely, which silently broke thumbnails post-Cloudinary-migration).
+export function firstItemImageSrc(item) {
+  const img = item.images && item.images.length > 0 ? item.images[0] : null;
+  if (!img) return null;
+  return img.url || img.data || null;
+}
