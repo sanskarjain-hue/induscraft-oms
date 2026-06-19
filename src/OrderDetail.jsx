@@ -551,13 +551,36 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // Salespeople (and admins) can update product images for an item at any time,
   // independent of which stage it's in. This logs an edit-log entry so it's clear
   // who changed the reference photos and when.
-  function addItemImages(itemId, newImages) {
-    const updated = {
-      ...order,
-      items: order.items.map(i => i.id === itemId ? { ...i, images: [...(i.images || []), ...newImages] } : i),
+  //
+  // Images go through Cloudinary (uploadFile), same as NewOrderForm — never store raw
+  // base64 directly in the order document. Base64-in-MongoDB was the exact problem
+  // behind the earlier image migration; storing it here again would silently
+  // reintroduce it for every image edited after order creation.
+  //
+  // buildUpdated/buildReplaced take an explicit `base` order rather than closing over
+  // the `order` prop. This matters across await boundaries (e.g. while a Cloudinary
+  // upload is in flight): the component can re-render with a fresh `order` prop in
+  // that window, and a closure over the original prop would silently overwrite
+  // whatever changed in between when the second save fires.
+  function buildAdded(base, itemId, newImages) {
+    return {
+      ...base,
+      items: base.items.map(i => i.id === itemId ? { ...i, images: [...(i.images || []), ...newImages] } : i),
       _editLogField: "Product images",
     };
-    onUpdate(updated);
+  }
+
+  function buildReplacedAt(base, itemId, idx, newImage) {
+    return {
+      ...base,
+      items: base.items.map(i => {
+        if (i.id !== itemId) return i;
+        const imgs = [...(i.images || [])];
+        imgs[idx] = newImage;
+        return { ...i, images: imgs };
+      }),
+      _editLogField: "Product images",
+    };
   }
 
   function removeItemImage(itemId, imgIdx) {
@@ -569,14 +592,35 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
     onUpdate(updated);
   }
 
-  function handleFileSelect(itemId, fileList) {
-    Array.from(fileList).forEach(file => {
+  async function handleFileSelect(itemId, fileList) {
+    const { uploadFile } = await import("./api");
+    for (const file of Array.from(fileList)) {
+      // Show an instant base64 preview while the real upload runs in the background,
+      // then swap it for the Cloudinary URL once the upload resolves.
       const reader = new FileReader();
-      reader.onload = ev => {
-        addItemImages(itemId, [{ name: file.name, type: file.type, data: ev.target.result }]);
+      reader.onload = async ev => {
+        const previewImage = { name: file.name, type: file.type, data: ev.target.result, uploading: true };
+        const item = order.items.find(i => i.id === itemId);
+        const insertIdx = (item.images || []).length;
+
+        // Build and save the preview-inserted order; remember exactly what we sent
+        // so the follow-up save starts from that same state rather than re-reading
+        // (possibly stale, possibly fresher-but-different) component props.
+        const withPreview = buildAdded(order, itemId, [previewImage]);
+        onUpdate(withPreview);
+
+        try {
+          const result = await uploadFile(file, "orders");
+          const withFinal = buildReplacedAt(withPreview, itemId, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
+          onUpdate(withFinal);
+        } catch {
+          // Upload failed — leave the base64 preview in place rather than losing the image.
+          const withFallback = buildReplacedAt(withPreview, itemId, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
+          onUpdate(withFallback);
+        }
       };
       reader.readAsDataURL(file);
-    });
+    }
   }
 
   const canEditImages = role === "admin" || role === "sales";
@@ -1182,7 +1226,15 @@ function PaymentsTab({ order, role, onUpdate }) {
     setNewPayment({ amount: "", date: "", mode: "UPI", ref: "", notes: "" });
   }
 
-  const modeColors = { UPI: { bg: "#EEEDFE", fg: "#3C3489" }, "Bank transfer": { bg: "#E1F5EE", fg: "#085041" }, Cash: { bg: "#EAF3DE", fg: "#27500A" }, Cheque: { bg: "#F1EFE8", fg: "#444441" } };
+  const modeColors = {
+    UPI: { bg: "#EEEDFE", fg: "#3C3489" },
+    "Bank transfer": { bg: "#E1F5EE", fg: "#085041" },
+    Cash: { bg: "#EAF3DE", fg: "#27500A" },
+    Cheque: { bg: "#F1EFE8", fg: "#444441" },
+    Card: { bg: "#E6F1FB", fg: "#0C447C" },
+    "Payment link": { bg: "#FAEEDA", fg: "#633806" },
+    "QR code": { bg: "#FAECE7", fg: "#712B13" },
+  };
 
   return (
     <div>
@@ -1246,7 +1298,7 @@ function PaymentsTab({ order, role, onUpdate }) {
             <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 5 }}>Mode</div>
             <select value={newPayment.mode} onChange={e => setNewPayment(p => ({ ...p, mode: e.target.value }))}
               style={{ width: "100%", fontSize: 13, padding: "7px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontFamily: "inherit" }}>
-              {["UPI", "Bank transfer", "Cash", "Cheque"].map(m => <option key={m}>{m}</option>)}
+              {["UPI", "Bank transfer", "Cash", "Cheque", "Card", "Payment link", "QR code"].map(m => <option key={m}>{m}</option>)}
             </select>
           </div>
         </div>
