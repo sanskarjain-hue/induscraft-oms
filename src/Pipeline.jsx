@@ -362,7 +362,18 @@ function DealDetailModal({ deal, onUpdate, onDelete, onClose, onCreateOrder, rol
                   <div style={{ fontSize: 13, color: "#27500A", fontWeight: 500, marginBottom: 6 }}>Mark as Won and create an order?</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => setShowWonConfirm(false)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "0.5px solid #97C459", background: "transparent", color: "#27500A", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-                    <button onClick={async () => { await changeStage("Won"); onCreateOrder({ custName: deal.customerName, custPhone: deal.customerPhone || "", salesperson: deal.salesperson, channel: deal.channel || "" }); onClose(); }}
+                    {/*
+                      FIX (review item #3): channel used to fall back to "" when the deal had
+                      no channel set. NewOrderForm's mount effect only calls handleChannelChange
+                      (which also triggers onPrefillUsed) when prefill.channel is truthy — so an
+                      empty channel meant the prefill was never marked "used", and it would stick
+                      around in App.jsx state and cause the New Order form to unexpectedly pop
+                      open again on a later, unrelated visit to the Orders page. Defaulting to
+                      "Jodhpur" (your home channel) guarantees channel is always truthy, so the
+                      prefill always gets consumed and cleared. Still fully editable by the user
+                      in Step 1 of the form before they submit.
+                    */}
+                    <button onClick={async () => { await changeStage("Won"); onCreateOrder({ custName: deal.customerName, custPhone: deal.customerPhone || "", salesperson: deal.salesperson, channel: deal.channel || "Jodhpur" }); onClose(); }}
                       style={{ fontSize: 12, padding: "6px 16px", borderRadius: 8, border: "none", background: "#27500A", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Won — Create order</button>
                   </div>
                 </div>
