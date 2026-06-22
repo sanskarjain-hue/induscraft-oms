@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
@@ -556,6 +556,33 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   );
 }
 
+// Standalone component so each item in the list gets its own ref.
+// Using a button + ref.current.click() instead of a label wrapping a hidden
+// input, because Chrome sometimes drops the onChange event on hidden inputs
+// inside labels when the label has nested elements — the file picker opens
+// but the event never fires. The ref approach is reliable across all browsers.
+function ImageUploadButton({ onFiles }) {
+  const ref = useRef(null);
+  return (
+    <>
+      <button
+        onClick={() => ref.current.click()}
+        style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, background: "transparent", fontFamily: "inherit" }}
+      >
+        <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update images
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={e => { onFiles(e.target.files); e.target.value = ""; }}
+      />
+    </>
+  );
+}
+
 function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // Salespeople (and admins) can update product images for an item at any time,
   // independent of which stage it's in. This logs an edit-log entry so it's clear
@@ -674,10 +701,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                   Product images {item.images && item.images.length > 0 ? `(${item.images.length})` : ""}
                 </div>
                 {canEditImages && (
-                  <label style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                    <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update images
-                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(key, e.target.files); e.target.value = ""; }} />
-                  </label>
+                  <ImageUploadButton onFiles={files => handleFileSelect(key, files)} />
                 )}
               </div>
               {item.images && item.images.length > 0 ? (
