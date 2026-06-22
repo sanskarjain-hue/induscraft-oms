@@ -3,7 +3,6 @@ import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
 import { STAGES } from "./data";
-import { uploadFile } from "./api";
 
 // FIX: orders saved before the item.id schema fix have items with no `id` field
 // (it was silently stripped by Mongoose strict mode — see models/Order.js). This
@@ -608,6 +607,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   }
 
   async function handleFileSelect(key, fileList) {
+    const { uploadFile } = await import("./api");
     for (const file of Array.from(fileList)) {
       const reader = new FileReader();
       reader.onload = async ev => {
