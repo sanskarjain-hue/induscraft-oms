@@ -200,6 +200,7 @@ export default function App() {
         ? { ...orderToSave, editLogEntry: { field: _editLogField } }
         : orderToSave;
       const saved = await api.updateOrder(originalId, payload);
+      if (!saved || !saved._id) return;
       setAllOrders(prev => prev.map(o => (o._id === saved._id) ? saved : o));
       if (saved.id !== originalId) setSelectedOrderId(saved.id);
     } catch (err) {
