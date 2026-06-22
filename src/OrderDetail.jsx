@@ -4,6 +4,13 @@ import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
 import { STAGES } from "./data";
 
+// FIX: orders saved before the item.id schema fix have items with no `id` field
+// (it was silently stripped by Mongoose strict mode). This helper falls back to
+// Mongoose's own `_id` so all item matching works for both old and new orders.
+function itemKey(item) {
+  return item.id || item._id;
+}
+
 function TabBar({ tabs, active, onSelect }) {
   return (
     <div style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0" }}>
@@ -176,7 +183,7 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
           <SectionTitle style={{ marginBottom: 0 }}>Pipeline</SectionTitle>
           <div style={{ display: "flex", gap: 16 }}>
             {order.items.map(item => (
-              <div key={item.id} style={{ textAlign: "right" }}>
+              <div key={itemKey(item)} style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>{item.name.substring(0, 20)}</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Due: {item.originalDelivery}</span>
@@ -377,14 +384,16 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   );
 
   function assignVendor(vendorId) {
-    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i), _editLogField: "Vendor assignment" };
+    const key = itemKey(item);
+    const updated = { ...order, items: order.items.map(i => itemKey(i) === key ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i), _editLogField: "Vendor assignment" };
     onUpdate(updated);
     setShowDropdown(false);
     setSearch("");
   }
 
   function unassign() {
-    const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorId: null, vendorCost: 0, committedDate: "" } : i), _editLogField: "Vendor assignment" };
+    const ukey = itemKey(item);
+    const updated = { ...order, items: order.items.map(i => itemKey(i) === ukey ? { ...i, vendorId: null, vendorCost: 0, committedDate: "" } : i), _editLogField: "Vendor assignment" };
     onUpdate(updated);
   }
 
@@ -527,7 +536,7 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
             <input type="date" defaultValue={item.committedDate || ""}
               onBlur={e => {
                 if (e.target.value === (item.committedDate || "")) return;
-                onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, committedDate: e.target.value } : i), _editLogField: "Committed delivery date" });
+                const ckey = itemKey(item); onUpdate({ ...order, items: order.items.map(i => itemKey(i) === ckey ? { ...i, committedDate: e.target.value } : i), _editLogField: "Committed delivery date" });
               }}
               style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
           </div>
@@ -537,7 +546,7 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
               onBlur={e => {
                 const parsed = parseFloat(e.target.value) || 0;
                 if (parsed === (item.vendorCost || 0)) return;
-                onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, vendorCost: parsed } : i), _editLogField: "Vendor cost" });
+                const vkey = itemKey(item); onUpdate({ ...order, items: order.items.map(i => itemKey(i) === vkey ? { ...i, vendorCost: parsed } : i), _editLogField: "Vendor cost" });
               }}
               style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
           </div>
@@ -562,19 +571,19 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // upload is in flight): the component can re-render with a fresh `order` prop in
   // that window, and a closure over the original prop would silently overwrite
   // whatever changed in between when the second save fires.
-  function buildAdded(base, itemId, newImages) {
+  function buildAdded(base, key, newImages) {
     return {
       ...base,
-      items: base.items.map(i => i.id === itemId ? { ...i, images: [...(i.images || []), ...newImages] } : i),
+      items: base.items.map(i => itemKey(i) === key ? { ...i, images: [...(i.images || []), ...newImages] } : i),
       _editLogField: "Product images",
     };
   }
 
-  function buildReplacedAt(base, itemId, idx, newImage) {
+  function buildReplacedAt(base, key, idx, newImage) {
     return {
       ...base,
       items: base.items.map(i => {
-        if (i.id !== itemId) return i;
+        if (itemKey(i) !== key) return i;
         const imgs = [...(i.images || [])];
         imgs[idx] = newImage;
         return { ...i, images: imgs };
@@ -583,16 +592,16 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
     };
   }
 
-  function removeItemImage(itemId, imgIdx) {
+  function removeItemImage(key, imgIdx) {
     const updated = {
       ...order,
-      items: order.items.map(i => i.id === itemId ? { ...i, images: (i.images || []).filter((_, idx) => idx !== imgIdx) } : i),
+      items: order.items.map(i => itemKey(i) === key ? { ...i, images: (i.images || []).filter((_, idx) => idx !== imgIdx) } : i),
       _editLogField: "Product images",
     };
     onUpdate(updated);
   }
 
-  async function handleFileSelect(itemId, fileList) {
+  async function handleFileSelect(key, fileList) {
     const { uploadFile } = await import("./api");
     for (const file of Array.from(fileList)) {
       // Show an instant base64 preview while the real upload runs in the background,
@@ -600,22 +609,22 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
       const reader = new FileReader();
       reader.onload = async ev => {
         const previewImage = { name: file.name, type: file.type, data: ev.target.result, uploading: true };
-        const item = order.items.find(i => i.id === itemId);
+        const item = order.items.find(i => itemKey(i) === key);
         const insertIdx = (item.images || []).length;
 
         // Build and save the preview-inserted order; remember exactly what we sent
         // so the follow-up save starts from that same state rather than re-reading
         // (possibly stale, possibly fresher-but-different) component props.
-        const withPreview = buildAdded(order, itemId, [previewImage]);
+        const withPreview = buildAdded(order, key, [previewImage]);
         onUpdate(withPreview);
 
         try {
           const result = await uploadFile(file, "orders");
-          const withFinal = buildReplacedAt(withPreview, itemId, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
+          const withFinal = buildReplacedAt(withPreview, key, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
           onUpdate(withFinal);
         } catch {
           // Upload failed — leave the base64 preview in place rather than losing the image.
-          const withFallback = buildReplacedAt(withPreview, itemId, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
+          const withFallback = buildReplacedAt(withPreview, key, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
           onUpdate(withFallback);
         }
       };
@@ -627,8 +636,10 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
 
   return (
     <div>
-      {order.items.map(item => (
-        <div key={item.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
+      {order.items.map(item => {
+        const key = itemKey(item);
+        return (
+        <div key={key} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
             <div style={{ width: 44, height: 44, borderRadius: 8, background: "var(--color-background-tertiary)", border: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
               {item.images && item.images.length > 0 && (item.images[0].url || item.images[0].data) ? (
@@ -665,7 +676,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                 {canEditImages && (
                   <label style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                     <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update images
-                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(item.id, e.target.files); e.target.value = ""; }} />
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(key, e.target.files); e.target.value = ""; }} />
                   </label>
                 )}
               </div>
@@ -702,7 +713,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                           )}
                         </div>
                         {canEditImages && (
-                          <button onClick={() => removeItemImage(item.id, i)} title="Remove image"
+                          <button onClick={() => removeItemImage(key, i)} title="Remove image"
                             style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
                             <i className="ti ti-x" />
                           </button>
@@ -770,7 +781,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
             </div>
           </div>
         </div>
-      ))}
+      );})}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 20, padding: "12px 16px", background: "var(--color-background-secondary)", borderRadius: 8 }}>
         <div><div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Items</div><div style={{ fontSize: 15, fontWeight: 500 }}>{order.items.length}</div></div>
         <div style={{ width: 1, background: "var(--color-border-tertiary)" }} />
@@ -1129,7 +1140,7 @@ function VendorsTab({ order, vendors, role, onVendorClick }) {
         const vendor = vendors.find(v => v.id === item.vendorId);
         const isDelayed = item.actualDate && item.actualDate > item.committedDate;
         return (
-          <div key={item.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
+          <div key={itemKey(item)} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#EEEDFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500, color: "#3C3489" }}>{vendor?.initials || "?"}</div>
               <div style={{ flex: 1 }}>
@@ -1198,7 +1209,7 @@ function VendorsTab({ order, vendors, role, onVendorClick }) {
           {order.items.map(item => {
             const vendor = vendors.find(v => v.id === item.vendorId);
             return (
-              <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, marginBottom: 8 }}>
+              <div key={itemKey(item)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, marginBottom: 8 }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 500 }}><i className="ti ti-file-text" style={{ fontSize: 14, marginRight: 6, color: "var(--color-text-secondary)" }} />{vendor?.name || "Unassigned"} — PO</div>
                   <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>{item.name} &middot; Due {item.committedDate || "—"}</div>
