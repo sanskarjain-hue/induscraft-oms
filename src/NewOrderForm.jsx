@@ -64,14 +64,8 @@ function emptyItem() {
 }
 
 // ── FILE UPLOAD AREA ──────────────────────────────────────
-// Fix: the upload zone previously had onPaste on a wrapper div with nothing focusable
-// inside it, so Ctrl+V never had a target to deliver the paste event to. Now the zone
-// itself is a focusable element (tabIndex=0), gets focus on click, and shows a visible
-// focus ring so it's clear paste will land there.
 function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint }) {
   const ref = useRef();
-  const zoneRef = useRef();
-  const [focused, setFocused] = useState(false);
 
   async function readFiles(fileList) {
     const fileArray = Array.from(fileList);
@@ -113,70 +107,23 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
     e.target.value = "";
   }
 
-  function handlePaste(e) {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    const imageItems = Array.from(items).filter(i => i.type.startsWith("image/"));
-    if (imageItems.length === 0) return;
-    e.preventDefault();
-    imageItems.forEach(item => {
-      const file = item.getAsFile();
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const preview = { name: `paste-${Date.now()}.png`, type: file.type, data: ev.target.result, uploading: true };
-        onAdd(prev => multiple ? [...prev, preview] : [preview]);
-        uploadFile(file, "orders").then(result => {
-          onAdd(prev => {
-            const idx = prev.findIndex(p => p.data === ev.target.result);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = { name: preview.name, type: file.type, url: result.url, publicId: result.publicId };
-            return next;
-          });
-        }).catch(() => {
-          // Keep base64 fallback on paste upload failure
-          onAdd(prev => {
-            const idx = prev.findIndex(p => p.uploading && p.data === ev.target.result);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = { name: preview.name, type: file.type, data: ev.target.result };
-            return next;
-          });
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
   const isImage = (f) => f.type && f.type.startsWith("image/");
 
   return (
     <div>
       <div style={LABEL}>{label}</div>
       <div
-        ref={zoneRef}
-        tabIndex={0}
-        onPaste={handlePaste}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onClick={() => { zoneRef.current?.focus(); ref.current.click(); }}
+        onClick={() => ref.current.click()}
         style={{
-          border: focused ? "1.5px solid #C0392B" : "0.5px dashed var(--color-border-secondary)",
+          border: "0.5px dashed var(--color-border-secondary)",
           borderRadius: 10, padding: "18px 16px", textAlign: "center",
           cursor: "pointer", background: "var(--color-background-secondary)",
-          outline: "none",
-          boxShadow: focused ? "0 0 0 3px rgba(192,57,43,0.12)" : "none",
-          transition: "border-color 0.15s, box-shadow 0.15s",
         }}
         onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); readFiles(e.dataTransfer.files); }}
       >
         <i className="ti ti-upload" style={{ fontSize: 22, color: "var(--color-text-secondary)", display: "block", marginBottom: 6 }} />
         <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Click or drag to upload</div>
-        <div style={{ fontSize: 11, color: focused ? "#C0392B" : "var(--color-text-secondary)", marginTop: 3, fontWeight: focused ? 600 : 400 }}>
-          {focused ? "Ready — press Ctrl+V to paste" : <>or click here, then <strong>Ctrl+V</strong> to paste a screenshot</>}
-        </div>
         {hint && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>{hint}</div>}
       </div>
       <input ref={ref} type="file" accept={accept} multiple={multiple} style={{ display: "none" }} onChange={handleFiles} />
