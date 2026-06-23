@@ -918,8 +918,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
 
             <div style={{ padding: 16 }}>
               {STAGES.map((stageName, i) => {
-                const isDone = i < item.stageIndex;
-                const isActive = i === item.stageIndex;
+                const isDone = i < item.stageIndex || (i === 8 && item.stageIndex === 8);
+                const isActive = i === item.stageIndex && !(i === 8 && item.stageIndex === 8);
                 return (
                   <div key={stageName} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0, paddingTop: 2 }}>
@@ -1105,6 +1105,21 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               <i className="ti ti-check" style={{ fontSize: 13 }} /> Customer confirmed — deliver now
                             </button>
                           )}
+                        </div>
+                      )}
+
+                      {stageName === "Delivered to customer" && item.stageIndex < 8 && (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                            Item will appear here once dispatched and delivered to warehouse.
+                          </div>
+                        </div>
+                      )}
+
+                      {stageName === "Delivered to customer" && item.stageIndex === 8 && (
+                        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                          <i className="ti ti-circle-check" style={{ fontSize: 16, color: "#639922" }} />
+                          <span style={{ fontSize: 12, color: "#3B6D11", fontWeight: 500 }}>Delivered to customer</span>
                         </div>
                       )}
                     </div>
