@@ -201,12 +201,12 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
             <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
                 <div style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : i <= maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
-                <div style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, background: i < maxStageIdx ? "#639922" : i === maxStageIdx ? "#FAEEDA" : "var(--color-background-primary)", border: `2px solid ${i < maxStageIdx ? "#639922" : i === maxStageIdx ? "#BA7517" : "var(--color-border-tertiary)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {i < maxStageIdx && <i className="ti ti-check" style={{ fontSize: 9, color: "white" }} />}
+                <div style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, background: (i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#FAEEDA" : "var(--color-background-primary)", border: `2px solid ${(i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#BA7517" : "var(--color-border-tertiary)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {(i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) && <i className="ti ti-check" style={{ fontSize: 9, color: "white" }} />}
                 </div>
                 <div style={{ flex: 1, height: 2, background: i === STAGES.length - 1 ? "transparent" : i < maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
               </div>
-              <div style={{ fontSize: 9, color: i === maxStageIdx ? "#854F0B" : i < maxStageIdx ? "#3B6D11" : "var(--color-text-secondary)", textAlign: "center", marginTop: 5, maxWidth: 58, lineHeight: 1.3, fontWeight: i === maxStageIdx ? 500 : 400 }}>{s}</div>
+              <div style={{ fontSize: 9, color: (i === maxStageIdx && i !== STAGES.length - 1) ? "#854F0B" : (i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#3B6D11" : "var(--color-text-secondary)", textAlign: "center", marginTop: 5, maxWidth: 58, lineHeight: 1.3, fontWeight: i === maxStageIdx ? 500 : 400 }}>{s}</div>
             </div>
           ))}
         </div>
@@ -811,7 +811,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
     const updated = {
       ...order,
       items: order.items.map(i => {
-        if (i.id !== itemId) return i;
+        if (itemKey(i) !== itemId) return i;
         const next = Math.min(i.stageIndex + 1, 8);
         let fp = { ...i.finishingProgress };
         if (i.stageIndex === 3) fp = Object.fromEntries(Object.keys(fp).map(k => [k, "done"]));
@@ -825,7 +825,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
     const updated = {
       ...order,
       items: order.items.map(i => {
-        if (i.id !== itemId) return i;
+        if (itemKey(i) !== itemId) return i;
         const fp = { ...i.finishingProgress };
         const keys = Object.keys(fp);
         fp[stepName] = "done";
@@ -841,7 +841,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
     const updated = {
       ...order,
       items: order.items.map(i => {
-        if (i.id !== itemId) return i;
+        if (itemKey(i) !== itemId) return i;
         const base = new Date();
         base.setDate(base.getDate() + parseInt(days));
         const newDate = base.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -887,10 +887,10 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
         const whatsappUrl = `https://wa.me/${order.customer.phone.replace(/\D/g, "")}?text=${whatsappMsg}`;
         const userCanAdvance = canAdvance(item.stageIndex) && item.stageIndex < 8;
         const canMessage = isResponsibleSalesperson(order);
-        const localQC = qcState[item.id] || {};
+        const localQC = qcState[itemKey(item)] || {};
 
         return (
-          <div key={item.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 16, overflow: "hidden" }}>
+          <div key={itemKey(item)} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, marginBottom: 16, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{item.name}</div>
@@ -934,12 +934,12 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           {isActive && <TimerPill item={item} orderDate={order.date} />}
                           {isActive && userCanAdvance && stageName !== "QC" && stageName !== "Raw ready" && stageName !== "Delivered to warehouse" && (
-                            <button onClick={() => advanceItem(item.id)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                            <button onClick={() => advanceItem(itemKey(item))} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                               <i className="ti ti-arrow-right" style={{ fontSize: 12 }} /> Mark complete
                             </button>
                           )}
                           {isActive && userCanAdvance && stageName === "Raw ready" && item.rawPhotosApproved && (
-                            <button onClick={() => advanceItem(item.id)} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                            <button onClick={() => advanceItem(itemKey(item))} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 7, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                               <i className="ti ti-arrow-right" style={{ fontSize: 12 }} /> Proceed to finishing
                             </button>
                           )}
@@ -947,7 +947,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <span style={{ fontSize: 11, color: "#BA7517", fontStyle: "italic" }}>Awaiting raw photo approval</span>
                           )}
                           {isActive && role === "admin" && (
-                            <button onClick={() => setDelayModal(item.id)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "0.5px solid #BA7517", background: "transparent", color: "#854F0B", cursor: "pointer", fontFamily: "inherit" }}>
+                            <button onClick={() => setDelayModal(itemKey(item))} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, border: "0.5px solid #BA7517", background: "transparent", color: "#854F0B", cursor: "pointer", fontFamily: "inherit" }}>
                               Log delay
                             </button>
                           )}
@@ -969,7 +969,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               photos={item.rawPhotos || []}
                               label="Raw product photos"
                               canUpload={true}
-                              onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotos: newPhotos } : i) })}
+                              onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotos: newPhotos } : i) })}
                             />
                           )}
                           {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (role === "admin" || role === "sales") && (
@@ -978,7 +978,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                                 Review the raw photos above and approve to allow polishing to begin.
                               </div>
                               <button onClick={() => {
-                                const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, rawPhotosApproved: true } : i) };
+                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotosApproved: true } : i) };
                                 onUpdate(updated);
                               }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
                                 <i className="ti ti-check" style={{ fontSize: 13 }} /> Approve — proceed to finishing
@@ -1024,7 +1024,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                                 <span style={{ color: status === "done" ? "#3B6D11" : status === "active" ? "#854F0B" : "var(--color-text-secondary)", fontWeight: status === "active" ? 500 : 400 }}>{step}</span>
                                 <span style={{ fontSize: 11, color: "var(--color-text-secondary)", marginLeft: "auto" }}>{status === "done" ? "Done" : status === "active" ? "In progress" : "Pending"}</span>
                                 {status !== "done" && (role === "admin" || role === "qc") && (
-                                  <button onClick={() => advanceSubStep(item.id, step)} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, border: "0.5px solid #639922", background: "transparent", color: "#3B6D11", cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+                                  <button onClick={() => advanceSubStep(itemKey(item), step)} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, border: "0.5px solid #639922", background: "transparent", color: "#3B6D11", cursor: "pointer", fontFamily: "inherit" }}>Done</button>
                                 )}
                               </div>
                             );
@@ -1033,7 +1033,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             photos={item.finishingPhotos || []}
                             label="In-progress photos"
                             canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, finishingPhotos: newPhotos } : i) })}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, finishingPhotos: newPhotos } : i) })}
                           />
                         </div>
                       )}
@@ -1045,16 +1045,16 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                               <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>QC notes</div>
                               <textarea
                                 value={localQC.notes || ""}
-                                onChange={e => setQcState(s => ({ ...s, [item.id]: { ...s[item.id], notes: e.target.value } }))}
+                                onChange={e => setQcState(s => ({ ...s, [itemKey(item)]: { ...s[itemKey(item)], notes: e.target.value } }))}
                                 placeholder="Describe findings, issues, or observations..."
                                 style={{ width: "100%", fontSize: 12, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit", resize: "vertical", minHeight: 70, marginBottom: 10 }}
                               />
                               {(role === "admin" || role === "qc") && (
                                 <div style={{ display: "flex", gap: 8 }}>
-                                  <button onClick={() => submitQC(item.id, "pass")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                  <button onClick={() => submitQC(itemKey(item), "pass")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                                     <i className="ti ti-check" style={{ fontSize: 14 }} /> Pass QC
                                   </button>
-                                  <button onClick={() => submitQC(item.id, "fail")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                  <button onClick={() => submitQC(itemKey(item), "fail")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                                     <i className="ti ti-x" style={{ fontSize: 14 }} /> Fail QC
                                   </button>
                                 </div>
@@ -1068,7 +1068,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             photos={item.qcPhotos || []}
                             label="QC inspection photos"
                             canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => i.id === item.id ? { ...i, qcPhotos: newPhotos } : i) })}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, qcPhotos: newPhotos } : i) })}
                           />
                         </div>
                       )}
@@ -1080,7 +1080,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <input type="number" min="1" defaultValue={item.packetCount || ""}
                               placeholder="e.g. 3"
                               onBlur={e => {
-                                const updated = { ...order, items: order.items.map(i => i.id === item.id ? { ...i, packetCount: parseInt(e.target.value) || 0 } : i) };
+                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, packetCount: parseInt(e.target.value) || 0 } : i) };
                                 onUpdate(updated);
                               }}
                               style={{ width: 120, fontSize: 13, padding: "7px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
@@ -1101,7 +1101,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             Item is at warehouse. Waiting for customer to confirm availability before delivery.
                           </div>
                           {(role === "admin" || role === "sales") && (
-                            <button onClick={() => advanceItem(item.id)} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                            <button onClick={() => advanceItem(itemKey(item))} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
                               <i className="ti ti-check" style={{ fontSize: 13 }} /> Customer confirmed — deliver now
                             </button>
                           )}
