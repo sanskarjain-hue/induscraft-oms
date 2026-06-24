@@ -3,7 +3,7 @@ import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurre
 import { STAGES, CHANNELS } from "./data";
 import NewOrderForm from "./NewOrderForm";
 
-export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder, prefill, onPrefillUsed }) {
+export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder, prefill, onPrefillUsed, currentUser }) {
   const [channelFilter, setChannelFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -27,7 +27,7 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
         <NewOrderForm
           vendors={vendors}
           existingOrders={orders}
-          currentUser={null}
+          currentUser={currentUser}
           prefill={prefill}
           onPrefillUsed={onPrefillUsed}
           onSave={(newOrder) => { onNewOrder(newOrder); setShowForm(false); }}

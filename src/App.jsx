@@ -21,7 +21,7 @@ const NAV = [
 ];
 
 const themeCSS = `
-  :root[data-theme="light"] {
+  :root {
     --color-background-primary: #ffffff;
     --color-background-secondary: #f5f5f3;
     --color-background-tertiary: #eeede8;
@@ -40,30 +40,11 @@ const themeCSS = `
     --border-radius-lg: 12px;
     --font-sans: 'DM Sans', sans-serif;
   }
-  :root[data-theme="dark"] {
-    --color-background-primary: #1c1c1e;
-    --color-background-secondary: #2c2c2e;
-    --color-background-tertiary: #141414;
-    --color-background-info: #0c2a45;
-    --color-text-primary: #f0f0f0;
-    --color-text-secondary: #999999;
-    --color-text-info: #5baaf5;
-    --color-text-danger: #e05c5c;
-    --color-text-warning: #e0a040;
-    --color-text-success: #6abf40;
-    --color-border-primary: #555555;
-    --color-border-secondary: #3a3a3c;
-    --color-border-tertiary: #2a2a2c;
-    --color-border-danger: #7a3030;
-    --border-radius-md: 8px;
-    --border-radius-lg: 12px;
-    --font-sans: 'DM Sans', sans-serif;
-  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; }
 `;
 
-function LoginScreen({ onLogin, darkMode, setDarkMode }) {
+function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -86,9 +67,7 @@ function LoginScreen({ onLogin, darkMode, setDarkMode }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", position: "relative" }}>
-      <button onClick={() => setDarkMode(d => !d)} style={{ position: "absolute", top: 20, right: 20, width: 36, height: 36, borderRadius: "50%", border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>
-        <i className={darkMode ? "ti ti-sun" : "ti ti-moon"} />
-      </button>
+
       <div style={{ backgroundColor: "#ffffff", color: "#1a1a1a", borderRadius: 16, padding: "40px 36px", width: "100%", maxWidth: 400, boxShadow: "0 8px 40px rgba(0,0,0,0.08)" }}>
         <div style={{ marginBottom: 32, textAlign: "center" }}>
           <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.5px" }}>
@@ -133,7 +112,6 @@ export default function App() {
   const [prefillOrder, setPrefillOrder] = useState(null);
   const [selectedVendorId, setSelectedVendorId] = useState(null);
   const [currentUser, setCurrentUser] = useState(() => api.getStoredUser());
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("induscraft-theme") === "dark");
 
   // Data state
   const [allOrders, setAllOrders] = useState([]);
@@ -143,10 +121,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    localStorage.setItem("induscraft-theme", darkMode ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
-  }, [darkMode]);
+
 
   // Load all data when user logs in
   useEffect(() => {
@@ -265,14 +240,14 @@ export default function App() {
   }
 
   return (
-    <div data-theme={darkMode ? "dark" : "light"} style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", fontFamily: "'DM Sans', sans-serif" }}>
       <style>{themeCSS}</style>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
 
       {!currentUser ? (
-        <LoginScreen onLogin={user => { setCurrentUser(user); }} darkMode={darkMode} setDarkMode={setDarkMode} />
+        <LoginScreen onLogin={user => { setCurrentUser(user); }} />
       ) : (
         <>
           <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
@@ -281,7 +256,13 @@ export default function App() {
                 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>Operations</span> <span style={{ color: "#C0392B", fontWeight: 600 }}>— Induscraft</span>
               </div>
               <div style={{ display: "flex", gap: 2 }}>
-                {NAV.map(n => (
+                {NAV.filter(n => {
+                  if (role === "admin") return true;
+                  if (role === "sales") return ["dashboard", "orders", "pipeline", "pastorders"].includes(n.id);
+                  if (role === "qc") return ["dashboard", "orders"].includes(n.id);
+                  if (role === "accountant") return ["dashboard", "orders", "reports", "pastorders"].includes(n.id);
+                  return ["dashboard", "orders"].includes(n.id);
+                }).map(n => (
                   <button key={n.id} onClick={() => navigate(n.id)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: page === n.id ? "var(--color-background-secondary)" : "transparent", color: page === n.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: page === n.id ? 500 : 400, display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
                     <i className={`ti ${n.icon}`} style={{ fontSize: 14 }} />{n.label}
                   </button>
@@ -290,9 +271,7 @@ export default function App() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {loading && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Loading...</div>}
-              <button onClick={() => setDarkMode(d => !d)} style={{ width: 32, height: 32, borderRadius: "50%", border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontFamily: "inherit" }}>
-                <i className={darkMode ? "ti ti-sun" : "ti ti-moon"} />
-              </button>
+
               <div style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
                 <i className="ti ti-shield" style={{ fontSize: 13 }} />{ROLES[role]?.label || "Admin"}
               </div>

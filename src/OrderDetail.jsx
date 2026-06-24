@@ -712,6 +712,11 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                             </div>
                           )}
                         </div>
+                        {img.uploading && (
+                          <div style={{ position: "absolute", inset: 0, borderRadius: 8, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ fontSize: 9, color: "white", fontWeight: 500 }}>Uploading</div>
+                          </div>
+                        )}
                         {canEditImages && (
                           <button onClick={() => removeItemImage(key, i)} title="Remove image"
                             style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
