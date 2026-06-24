@@ -439,10 +439,17 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   function updateItem(idx, field, value) {
     setItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      const updated = { ...item, [field]: value };
+      // When value is a function, resolve it against the LATEST state (item[field]
+      // from the setItems updater), not the stale closure value from the render
+      // when onAdd was captured. This fixes image uploads in FileUploadArea:
+      // without it, the Cloudinary-URL replacement callback runs with the old
+      // (empty) images array from before the preview was added, wipes the preview,
+      // and the image disappears.
+      const resolved = typeof value === "function" ? value(item[field]) : value;
+      const updated = { ...item, [field]: resolved };
       if (field === "finishingSteps") {
         const fp = {};
-        value.forEach(s => { fp[s] = "pending"; });
+        resolved.forEach(s => { fp[s] = "pending"; });
         updated.finishingProgress = fp;
       }
       return updated;
@@ -795,7 +802,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       accept="image/*,.pdf"
                       multiple={true}
                       files={item.images || []}
-                      onAdd={fn => updateItem(idx, "images", typeof fn === "function" ? fn(item.images || []) : fn)}
+                      onAdd={fn => updateItem(idx, "images", typeof fn === "function" ? prev => fn(prev || []) : fn)}
                       hint="JPG, PNG, PDF"
                     />
 
@@ -805,7 +812,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       accept="image/*,.pdf"
                       multiple={true}
                       files={item.measurementPhotos || []}
-                      onAdd={fn => updateItem(idx, "measurementPhotos", typeof fn === "function" ? fn(item.measurementPhotos || []) : fn)}
+                      onAdd={fn => updateItem(idx, "measurementPhotos", typeof fn === "function" ? prev => fn(prev || []) : fn)}
                       hint="Upload measurement drawing or sketch"
                     />
 
