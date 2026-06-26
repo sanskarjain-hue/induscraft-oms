@@ -1,4 +1,4 @@
-const BASE_URL = "https://induscraft-backend.onrender.com/api";
+const BASE_URL = (import.meta.env.VITE_API_URL || "https://induscraft-backend-production.up.railway.app") + "/api";
 
 // ── TOKEN MANAGEMENT ─────────────────────────────────────
 export function getToken() {
