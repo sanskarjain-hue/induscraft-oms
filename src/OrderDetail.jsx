@@ -572,37 +572,41 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // upload is in flight): the component can re-render with a fresh `order` prop in
   // that window, and a closure over the original prop would silently overwrite
   // whatever changed in between when the second save fires.
-  function buildAdded(base, key, newImages) {
+  // `field` is either "images" (product photos) or "measurementPhotos" (measurement
+  // drawings/sketches) — same upload/edit machinery serves both, parameterised so
+  // measurement photos get the exact same Cloudinary-backed, editable treatment as
+  // product images rather than a second, divergent implementation.
+  function buildAdded(base, key, field, newImages) {
     return {
       ...base,
-      items: base.items.map(i => itemKey(i) === key ? { ...i, images: [...(i.images || []), ...newImages] } : i),
-      _editLogField: "Product images",
+      items: base.items.map(i => itemKey(i) === key ? { ...i, [field]: [...(i[field] || []), ...newImages] } : i),
+      _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
     };
   }
 
-  function buildReplacedAt(base, key, idx, newImage) {
+  function buildReplacedAt(base, key, field, idx, newImage) {
     return {
       ...base,
       items: base.items.map(i => {
         if (itemKey(i) !== key) return i;
-        const imgs = [...(i.images || [])];
+        const imgs = [...(i[field] || [])];
         imgs[idx] = newImage;
-        return { ...i, images: imgs };
+        return { ...i, [field]: imgs };
       }),
-      _editLogField: "Product images",
+      _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
     };
   }
 
-  function removeItemImage(key, imgIdx) {
+  function removeItemImage(key, field, imgIdx) {
     const updated = {
       ...order,
-      items: order.items.map(i => itemKey(i) === key ? { ...i, images: (i.images || []).filter((_, idx) => idx !== imgIdx) } : i),
-      _editLogField: "Product images",
+      items: order.items.map(i => itemKey(i) === key ? { ...i, [field]: (i[field] || []).filter((_, idx) => idx !== imgIdx) } : i),
+      _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
     };
     onUpdate(updated);
   }
 
-  async function handleFileSelect(key, fileList) {
+  async function handleFileSelect(key, field, fileList) {
     for (const file of Array.from(fileList)) {
       // Show an instant base64 preview while the real upload runs in the background,
       // then swap it for the Cloudinary URL once the upload resolves.
@@ -610,21 +614,21 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
       reader.onload = async ev => {
         const previewImage = { name: file.name, type: file.type, data: ev.target.result, uploading: true };
         const item = order.items.find(i => itemKey(i) === key);
-        const insertIdx = (item.images || []).length;
+        const insertIdx = (item[field] || []).length;
 
         // Build and save the preview-inserted order; remember exactly what we sent
         // so the follow-up save starts from that same state rather than re-reading
         // (possibly stale, possibly fresher-but-different) component props.
-        const withPreview = buildAdded(order, key, [previewImage]);
+        const withPreview = buildAdded(order, key, field, [previewImage]);
         onUpdate(withPreview);
 
         try {
           const result = await uploadFile(file, "orders");
-          const withFinal = buildReplacedAt(withPreview, key, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
+          const withFinal = buildReplacedAt(withPreview, key, field, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
           onUpdate(withFinal);
         } catch {
           // Upload failed — leave the base64 preview in place rather than losing the image.
-          const withFallback = buildReplacedAt(withPreview, key, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
+          const withFallback = buildReplacedAt(withPreview, key, field, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
           onUpdate(withFallback);
         }
       };
@@ -632,7 +636,8 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
     }
   }
 
-  const canEditImages = role === "admin" || role === "sales";
+  // Opened to everyone — product/measurement images are editable by any role.
+  const canEditImages = true;
 
   return (
     <div>
@@ -676,7 +681,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                 {canEditImages && (
                   <label style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                     <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update images
-                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(key, e.target.files); e.target.value = ""; }} />
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(key, "images", e.target.files); e.target.value = ""; }} />
                   </label>
                 )}
               </div>
@@ -718,7 +723,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                           </div>
                         )}
                         {canEditImages && (
-                          <button onClick={() => removeItemImage(key, i)} title="Remove image"
+                          <button onClick={() => removeItemImage(key, "images", i)} title="Remove image"
                             style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
                             <i className="ti ti-x" />
                           </button>
@@ -729,6 +734,73 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No images uploaded yet.</div>
+              )}
+            </div>
+
+            {/* Measurement photos — previously only visible in the Print view (set once
+                at order creation, no way to view/edit afterward). Now shown and editable
+                here too, using the same Cloudinary-backed upload flow as product images. */}
+            <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Measurement photos {item.measurementPhotos && item.measurementPhotos.length > 0 ? `(${item.measurementPhotos.length})` : ""}
+                </div>
+                {canEditImages && (
+                  <label style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                    <i className="ti ti-upload" style={{ fontSize: 11 }} /> Update measurements
+                    <input type="file" accept="image/*,.pdf" multiple style={{ display: "none" }} onChange={e => { handleFileSelect(key, "measurementPhotos", e.target.files); e.target.value = ""; }} />
+                  </label>
+                )}
+              </div>
+              {item.measurementPhotos && item.measurementPhotos.length > 0 ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {item.measurementPhotos.map((img, i) => {
+                    const isImage = img.type && img.type.startsWith("image/");
+                    const src = img.url || img.data;
+                    return (
+                      <div key={i} style={{ position: "relative", width: 72, height: 72 }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", overflow: "hidden", cursor: "pointer" }}
+                          onClick={() => {
+                            if (!src) return;
+                            if (src.startsWith("http")) {
+                              window.open(src, "_blank");
+                            } else {
+                              fetch(src).then(r => r.blob()).then(blob => {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.target = "_blank";
+                                a.click();
+                                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                              });
+                            }
+                          }}>
+                          {isImage && src ? (
+                            <img src={src} alt={img.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                              <i className="ti ti-file" style={{ fontSize: 20, color: "var(--color-text-secondary)" }} />
+                              <div style={{ fontSize: 8, color: "var(--color-text-secondary)", textAlign: "center", padding: "0 4px" }}>{img.name}</div>
+                            </div>
+                          )}
+                        </div>
+                        {img.uploading && (
+                          <div style={{ position: "absolute", inset: 0, borderRadius: 8, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ fontSize: 9, color: "white", fontWeight: 500 }}>Uploading</div>
+                          </div>
+                        )}
+                        {canEditImages && (
+                          <button onClick={() => removeItemImage(key, "measurementPhotos", i)} title="Remove image"
+                            style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <i className="ti ti-x" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No measurement drawings uploaded yet.</div>
               )}
             </div>
 
@@ -812,7 +884,16 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
     return currentUser?.name === order.salesperson;
   }
 
-  function advanceItem(itemId, extraProps = {}) {
+  // FIX: this function previously never pushed a stageHistory entry, even though
+  // it's the actual code path every "Mark complete" / "Proceed to finishing" /
+  // "Customer confirmed" button in this file runs through (advanceItemStage on the
+  // backend, which does push stageHistory, is never called by the frontend at all —
+  // every mutation here goes through the general order PUT instead). Since
+  // getStageTimer() (ui.jsx) reads stageHistory to know when an item entered its
+  // current stage, SLA timers have been silently non-functional for every stage
+  // past stage 0 on every order. Adding the push here fixes that as part of this
+  // change, since backward stage-editing depends on stageHistory being accurate too.
+  function advanceItem(itemId, extraProps = {}, editLogField = "Stage advanced") {
     const updated = {
       ...order,
       items: order.items.map(i => {
@@ -820,8 +901,59 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
         const next = Math.min(i.stageIndex + 1, 8);
         let fp = { ...i.finishingProgress };
         if (i.stageIndex === 3) fp = Object.fromEntries(Object.keys(fp).map(k => [k, "done"]));
-        return { ...i, stageIndex: next, finishingProgress: fp, ...extraProps };
-      })
+        return {
+          ...i,
+          stageIndex: next,
+          finishingProgress: fp,
+          stageHistory: [...(i.stageHistory || []), { stageIndex: next, enteredAt: new Date().toISOString() }],
+          ...extraProps,
+        };
+      }),
+      _editLogField: editLogField,
+    };
+    onUpdate(updated);
+  }
+
+  // Per-stage data that should be cleared when an item's stage is moved backward
+  // past it — e.g. reverting from Packed to Finishing clears the packet count that
+  // was recorded for the (now un-reached) Packed stage. Vendor assignment is cleared
+  // when reverting below stage 1, since it's the stage-0→1 gate. Dispatch details are
+  // intentionally NOT cleared here — they live at the order level, not per item
+  // (some orders dispatch items separately, which the current schema doesn't model
+  // per-item yet — a separate thing worth addressing on its own, not folded in here).
+  function clearDataForRevert(item, targetStage) {
+    const cleared = {};
+    if (targetStage < 5) cleared.packetCount = 0;
+    if (targetStage < 4) { cleared.qcStatus = null; cleared.qcNotes = ""; cleared.qcPhotos = []; }
+    if (targetStage < 3) {
+      cleared.finishingPhotos = [];
+      cleared.finishingProgress = Object.fromEntries((item.finishingSteps || []).map(s => [s, "pending"]));
+    }
+    if (targetStage < 2) { cleared.rawPhotos = []; cleared.rawPhotosApproved = false; }
+    if (targetStage < 1) { cleared.vendorId = null; cleared.vendorCost = 0; cleared.committedDate = ""; }
+    return cleared;
+  }
+
+  // Lets an item's stage be set directly to any of the 9 stages, forward or
+  // backward — for correcting an accidental click, not just moving forward one
+  // step at a time. Gated by the same canAdvance() permission as everything else
+  // in this tab (see the <select> below).
+  function setItemStage(itemId, newStageIndex) {
+    const target = parseInt(newStageIndex, 10);
+    const updated = {
+      ...order,
+      items: order.items.map(i => {
+        if (itemKey(i) !== itemId) return i;
+        if (target === i.stageIndex) return i;
+        const clearedFields = target < i.stageIndex ? clearDataForRevert(i, target) : {};
+        return {
+          ...i,
+          ...clearedFields,
+          stageIndex: target,
+          stageHistory: [...(i.stageHistory || []), { stageIndex: target, enteredAt: new Date().toISOString() }],
+        };
+      }),
+      _editLogField: "Stage changed",
     };
     onUpdate(updated);
   }
@@ -837,7 +969,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
         const idx = keys.indexOf(stepName);
         if (idx + 1 < keys.length && fp[keys[idx + 1]] !== "done") fp[keys[idx + 1]] = "active";
         return { ...i, finishingProgress: fp };
-      })
+      }),
+      _editLogField: "Finishing progress",
     };
     onUpdate(updated);
   }
@@ -851,7 +984,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
         base.setDate(base.getDate() + parseInt(days));
         const newDate = base.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
         return { ...i, currentDelivery: newDate };
-      })
+      }),
+      _editLogField: "Delivery delay logged",
     };
     onUpdate(updated);
     setDelayModal(null);
@@ -863,7 +997,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
       alert("Please add a comment explaining why QC failed.");
       return;
     }
-    advanceItem(itemId, { qcStatus: status, qcNotes: notes });
+    advanceItem(itemId, { qcStatus: status, qcNotes: notes }, `QC ${status === "pass" ? "passed" : "failed"}`);
     setQcState(s => ({ ...s, [itemId]: { ...s[itemId], submitted: true } }));
   }
 
@@ -891,6 +1025,10 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
         const whatsappMsg = encodeURIComponent(`Dear ${order.customer.name}, your order ${order.id} has been slightly delayed. New expected delivery: ${item.currentDelivery}. We apologise for the inconvenience. — Induscraft`);
         const whatsappUrl = `https://wa.me/${order.customer.phone.replace(/\D/g, "")}?text=${whatsappMsg}`;
         const userCanAdvance = canAdvance(item.stageIndex) && item.stageIndex < 8;
+        // Same permission as the forward-advance buttons, but without the "< 8" cap —
+        // stage can be corrected even from the terminal stage (e.g. accidentally
+        // marked delivered).
+        const canEditStage = canAdvance(item.stageIndex);
         const canMessage = isResponsibleSalesperson(order);
         const localQC = qcState[itemKey(item)] || {};
 
@@ -907,6 +1045,24 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
               </div>
               <Badge variant={stageVariant(item.stageIndex)}>{STAGES[item.stageIndex]}</Badge>
               <TimerPill item={item} orderDate={order.date} />
+              {canEditStage && (
+                <select
+                  value={item.stageIndex}
+                  onChange={e => {
+                    if (parseInt(e.target.value, 10) < item.stageIndex) {
+                      if (!window.confirm(`Move this item back to "${STAGES[parseInt(e.target.value, 10)]}"? This will clear photos/notes recorded for any stage after that point (vendor assignment included, if reverting before "Processing started"). Dispatch details are not affected.`)) {
+                        e.target.value = item.stageIndex;
+                        return;
+                      }
+                    }
+                    setItemStage(itemKey(item), e.target.value);
+                  }}
+                  title="Correct this item's stage — use if it was accidentally advanced or reverted"
+                  style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-secondary)", fontFamily: "inherit", cursor: "pointer" }}
+                >
+                  {STAGES.map((s, i) => <option key={s} value={i}>{i}. {s}</option>)}
+                </select>
+              )}
             </div>
 
             {isDelayed && (
@@ -969,21 +1125,19 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>
                             QC team must upload raw product photos. Salesperson approval required before polishing can begin.
                           </div>
-                          {(role === "admin" || role === "qc") && (
-                            <StagePhotoStrip
-                              photos={item.rawPhotos || []}
-                              label="Raw product photos"
-                              canUpload={true}
-                              onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotos: newPhotos } : i) })}
-                            />
-                          )}
-                          {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (role === "admin" || role === "sales") && (
+                          <StagePhotoStrip
+                            photos={item.rawPhotos || []}
+                            label="Raw product photos"
+                            canUpload={true}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotos: newPhotos } : i), _editLogField: "Raw product photos" })}
+                          />
+                          {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (
                             <div style={{ marginTop: 8 }}>
                               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 6 }}>
                                 Review the raw photos above and approve to allow polishing to begin.
                               </div>
                               <button onClick={() => {
-                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotosApproved: true } : i) };
+                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotosApproved: true } : i), _editLogField: "Raw photos approved" };
                                 onUpdate(updated);
                               }} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
                                 <i className="ti ti-check" style={{ fontSize: 13 }} /> Approve — proceed to finishing
@@ -1028,7 +1182,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: status === "done" ? "#639922" : status === "active" ? "#BA7517" : "transparent", border: `1.5px solid ${status === "done" ? "#639922" : status === "active" ? "#BA7517" : "var(--color-border-secondary)"}`, flexShrink: 0 }} />
                                 <span style={{ color: status === "done" ? "#3B6D11" : status === "active" ? "#854F0B" : "var(--color-text-secondary)", fontWeight: status === "active" ? 500 : 400 }}>{step}</span>
                                 <span style={{ fontSize: 11, color: "var(--color-text-secondary)", marginLeft: "auto" }}>{status === "done" ? "Done" : status === "active" ? "In progress" : "Pending"}</span>
-                                {status !== "done" && (role === "admin" || role === "qc") && (
+                                {status !== "done" && (
                                   <button onClick={() => advanceSubStep(itemKey(item), step)} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, border: "0.5px solid #639922", background: "transparent", color: "#3B6D11", cursor: "pointer", fontFamily: "inherit" }}>Done</button>
                                 )}
                               </div>
@@ -1037,8 +1191,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                           <StagePhotoStrip
                             photos={item.finishingPhotos || []}
                             label="In-progress photos"
-                            canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, finishingPhotos: newPhotos } : i) })}
+                            canUpload={true}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, finishingPhotos: newPhotos } : i), _editLogField: "In-progress photos" })}
                           />
                         </div>
                       )}
@@ -1054,16 +1208,14 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                                 placeholder="Describe findings, issues, or observations..."
                                 style={{ width: "100%", fontSize: 12, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit", resize: "vertical", minHeight: 70, marginBottom: 10 }}
                               />
-                              {(role === "admin" || role === "qc") && (
-                                <div style={{ display: "flex", gap: 8 }}>
-                                  <button onClick={() => submitQC(itemKey(item), "pass")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                                    <i className="ti ti-check" style={{ fontSize: 14 }} /> Pass QC
-                                  </button>
-                                  <button onClick={() => submitQC(itemKey(item), "fail")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                                    <i className="ti ti-x" style={{ fontSize: 14 }} /> Fail QC
-                                  </button>
-                                </div>
-                              )}
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button onClick={() => submitQC(itemKey(item), "pass")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#639922", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                  <i className="ti ti-check" style={{ fontSize: 14 }} /> Pass QC
+                                </button>
+                                <button onClick={() => submitQC(itemKey(item), "fail")} style={{ flex: 1, fontSize: 12, padding: "8px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                  <i className="ti ti-x" style={{ fontSize: 14 }} /> Fail QC
+                                </button>
+                              </div>
                             </>
                           ) : (
                             <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>QC submitted.</div>
@@ -1072,8 +1224,8 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                           <StagePhotoStrip
                             photos={item.qcPhotos || []}
                             label="QC inspection photos"
-                            canUpload={role === "admin" || role === "qc"}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, qcPhotos: newPhotos } : i) })}
+                            canUpload={true}
+                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, qcPhotos: newPhotos } : i), _editLogField: "QC inspection photos" })}
                           />
                         </div>
                       )}
@@ -1085,7 +1237,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             <input type="number" min="1" defaultValue={item.packetCount || ""}
                               placeholder="e.g. 3"
                               onBlur={e => {
-                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, packetCount: parseInt(e.target.value) || 0 } : i) };
+                                const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, packetCount: parseInt(e.target.value) || 0 } : i), _editLogField: "Packet count" };
                                 onUpdate(updated);
                               }}
                               style={{ width: 120, fontSize: 13, padding: "7px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
@@ -1544,7 +1696,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
-          {role === "admin" && <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>}
+          <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>
           {role === "admin" && <Btn variant="danger" onClick={() => setShowArchiveConfirm(true)}><i className="ti ti-archive" style={{ fontSize: 13 }} /> Archive</Btn>}
           {role === "admin" && <Btn variant="danger" onClick={() => setShowDeleteConfirm(true)}><i className="ti ti-trash" style={{ fontSize: 13 }} /> Delete</Btn>}
         </div>
