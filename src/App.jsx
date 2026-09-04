@@ -166,14 +166,52 @@ export default function App() {
   // order's edit history. The backend appends { changedBy, field, changedAt } server-side
   // using the authenticated user's name, so the client never has to trust its own clock
   // or identity for the log entry itself.
+  // Every call site in OrderDetail.jsx builds its update by spreading the
+  // FULL order object and changing one field, e.g. `onUpdate({ ...order,
+  // notes: x })`. That `order` is this session's own cached copy from
+  // allOrders, which is fetched ONCE at login (see loadAllData/useEffect
+  // above) and never refreshed — so it can be hours stale relative to the
+  // server if anyone else (another admin, another tab, this same user in a
+  // second window) has touched this order since. Sending the whole stale
+  // object as the PUT body used to silently overwrite EVERY field back to
+  // this session's old values, including ones nobody here meant to touch —
+  // e.g. Admin A editing notes from a stale snapshot would revert Admin B's
+  // more recent "Archive" back to active, because A's payload still carried
+  // status: "active" and the backend has no way to know that wasn't
+  // deliberate. Confirmed by reproducing this exact sequence against the
+  // real backend route logic.
+  //
+  // Fix: diff `orderToSave` against our own last-known copy of the order
+  // (originalOrder) and send ONLY the field(s) that differ. A field this
+  // session never touched is simply absent from the payload, so the
+  // backend's Object.assign(freshOrderFromDB, payload) leaves it at
+  // whatever the CURRENT server value is — including any concurrent change
+  // this session doesn't know about yet. Comparison is by JSON value, not
+  // reference, since some call sites happen to create new references for
+  // nested fields (items, customer) without changing their content.
+  function diffOrderFields(next, original) {
+    if (!original) return next; // no local baseline to diff against — send as-is
+    const diffed = {};
+    for (const key of Object.keys(next)) {
+      if (key === "_id" || key === "id") continue; // always carried through below
+      if (JSON.stringify(next[key]) !== JSON.stringify(original[key])) {
+        diffed[key] = next[key];
+      }
+    }
+    diffed._id = next._id;
+    diffed.id = next.id;
+    return diffed;
+  }
+
   async function handleUpdateOrder(updatedOrder) {
     const { _editLogField, ...orderToSave } = updatedOrder;
     try {
       const originalOrder = allOrders.find(o => o._id === orderToSave._id);
       const originalId = originalOrder?.id || orderToSave.id;
+      const diffedFields = diffOrderFields(orderToSave, originalOrder);
       const payload = _editLogField
-        ? { ...orderToSave, editLogEntry: { field: _editLogField } }
-        : orderToSave;
+        ? { ...diffedFields, editLogEntry: { field: _editLogField } }
+        : diffedFields;
       const saved = await api.updateOrder(originalId, payload);
       if (!saved || !saved._id) return;
       setAllOrders(prev => prev.map(o => (o._id === saved._id) ? saved : o));
