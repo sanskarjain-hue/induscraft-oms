@@ -30,7 +30,9 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
           currentUser={currentUser}
           prefill={prefill}
           onPrefillUsed={onPrefillUsed}
-          onSave={(newOrder) => { onNewOrder(newOrder); setShowForm(false); }}
+          // The form closes only once the server has confirmed the order; if onNewOrder
+          // throws, the form stays open with everything the user typed.
+          onSave={async (newOrder) => { await onNewOrder(newOrder); setShowForm(false); }}
           onCancel={() => setShowForm(false)}
         />
       )}

@@ -1,4 +1,5 @@
-const BASE_URL = (import.meta.env.VITE_API_URL || "https://induscraft-backend-production.up.railway.app") + "/api";
+// Falls back to the Render backend if VITE_API_URL is not set in Vercel.
+const BASE_URL = (import.meta.env.VITE_API_URL || "https://induscraft-backend.onrender.com") + "/api";
 
 // ── TOKEN MANAGEMENT ─────────────────────────────────────
 export function getToken() {
@@ -23,29 +24,114 @@ export function setStoredUser(user) {
   localStorage.setItem("induscraft_user", JSON.stringify(user));
 }
 
+// ── ERRORS ────────────────────────────────────────────────
+// Every failed request throws an ApiError with a message that is safe to show a
+// person, plus flags the save queue uses to decide whether retrying makes sense.
+export class ApiError extends Error {
+  constructor(message, { status = 0, network = false, timeout = false, retryable = false, auth = false } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.network = network;
+    this.timeout = timeout;
+    this.retryable = retryable;
+    this.auth = auth;
+  }
+}
+
+function friendlyMessage(status, data) {
+  if (status === 413) return "The request was too large to send.";
+  if (data && data.error) return status >= 500 ? `Server error: ${data.error}` : data.error;
+  if (status === 502 || status === 503 || status === 504)
+    return "The server is starting up or temporarily unavailable. Trying again usually works.";
+  return `Server error (${status}).`;
+}
+
+// ── "SERVER IS SLOW / WAKING UP" SIGNAL ───────────────────
+// The Render free tier sleeps when idle and takes 30–60s to wake. Any request that
+// is still waiting after a few seconds flips this signal on so the UI can say so,
+// instead of looking frozen (which makes people click again or give up).
+const SLOW_AFTER_MS = 3000;
+const slowRequests = new Set();
+let slowListener = null;
+
+export function onServerSlow(fn) {
+  slowListener = fn;
+  return () => { if (slowListener === fn) slowListener = null; };
+}
+
+function beginRequest() {
+  const token = {};
+  const timer = setTimeout(() => {
+    slowRequests.add(token);
+    if (slowListener) slowListener(true);
+  }, SLOW_AFTER_MS);
+  return () => {
+    clearTimeout(timer);
+    if (slowRequests.delete(token) && slowRequests.size === 0 && slowListener) slowListener(false);
+  };
+}
+
 // ── BASE FETCH ────────────────────────────────────────────
-async function apiFetch(path, options = {}) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function requestOnce(path, options, { timeoutMs, isFormData }) {
   const token = getToken();
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (res.status === 401) {
-    clearToken();
-    window.location.reload();
-    return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const endSlowTracking = beginRequest();
+  let res, text;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller.signal });
+    text = await res.text();
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      throw new ApiError("The server took too long to respond.", { timeout: true, retryable: true });
+    }
+    throw new ApiError("Can't reach the server. Check your internet connection.", { network: true, retryable: true });
+  } finally {
+    clearTimeout(timer);
+    endSlowTracking();
   }
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
+  // The body is not always JSON (e.g. a gateway error page while the server wakes up).
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+
+  if (res.status === 401) {
+    if (path === "/auth/login") throw new ApiError((data && data.error) || "Incorrect username or password.", { status: 401 });
+    clearToken();
+    throw new ApiError("Your session has expired. Please sign in again.", { status: 401, auth: true });
+  }
+  if (!res.ok) {
+    throw new ApiError(friendlyMessage(res.status, data), {
+      status: res.status,
+      retryable: res.status === 502 || res.status === 503 || res.status === 504,
+    });
+  }
+  if (data === null && text) throw new ApiError("Unexpected response from the server.", { status: res.status });
   return data;
+}
+
+// Reads (GET) are retried automatically on transient failures. Writes are NOT
+// retried here — the save queue (orderSync.js) owns write retries so a write is
+// never silently sent twice.
+async function apiFetch(path, options = {}, { timeoutMs = 90000, isFormData = false } = {}) {
+  const maxRetries = (options.method || "GET").toUpperCase() === "GET" ? 2 : 0;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await requestOnce(path, options, { timeoutMs, isFormData });
+    } catch (e) {
+      if (e.retryable && attempt < maxRetries) { await sleep(1500 * (attempt + 1)); continue; }
+      throw e;
+    }
+  }
 }
 
 // ── USER MANAGEMENT ───────────────────────────────────────
@@ -225,20 +311,11 @@ export async function createReplacement(data) {
 
 // ── FILE UPLOAD ───────────────────────────────────────────
 export async function uploadFile(file, folder = "general") {
-  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
   formData.append("folder", folder);
-
-  const res = await fetch(`${BASE_URL}/upload/image`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Upload failed");
-  return data; // { name, type, url, publicId }
+  // 120s: a large photo on a slow connection, or the server waking up.
+  return apiFetch("/upload/image", { method: "POST", body: formData }, { timeoutMs: 120000, isFormData: true }); // { name, type, url, publicId }
 }
 
 export async function uploadMultipleFiles(files, folder = "general") {

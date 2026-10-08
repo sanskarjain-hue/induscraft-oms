@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ROLES } from "./data";
 import * as api from "./api";
+import { OrderSaveQueue, computePatch } from "./orderSync";
 import Dashboard from "./Dashboard";
 import OrdersList from "./OrdersList";
 import OrderDetail from "./OrderDetail";
@@ -59,7 +60,7 @@ function LoginScreen({ onLogin }) {
       const user = await api.login(username.trim().toLowerCase(), password);
       onLogin(user);
     } catch (err) {
-      setError("Incorrect username or password.");
+      setError(err && err.status === 401 ? "Incorrect username or password." : ((err && err.message) || "Could not sign in. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -114,14 +115,67 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => api.getStoredUser());
 
   // Data state
+  // allOrders is NOT a source of truth. It is what the screen shows: the last
+  // server-confirmed copy of every order, plus any change that is currently being
+  // saved. The save queue (orderSync.js) owns it — if a save fails, the change is
+  // taken back off the screen and held for Retry/Discard instead of being shown as
+  // saved.
   const [allOrders, setAllOrders] = useState([]);
+  const [saveStatus, setSaveStatus] = useState({ saving: 0, retrying: false, held: 0, heldOrderIds: [], heldLabels: [], error: null });
+  const [serverSlow, setServerSlow] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [allVendors, setAllVendors] = useState([]);
   const [allServiceJobs, setAllServiceJobs] = useState([]);
   const [allReplacements, setAllReplacements] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const queueRef = useRef(null);
+  if (!queueRef.current) {
+    queueRef.current = new OrderSaveQueue({
+      send: async (urlId, payload) => {
+        try {
+          return await api.updateOrder(urlId, payload);
+        } catch (e) {
+          if (e && e.auth) setSessionExpired(true);
+          throw e;
+        }
+      },
+      onChange: ({ orders, status }) => { setAllOrders(orders); setSaveStatus(status); },
+    });
+  }
+  const queue = queueRef.current;
+  const creatingRef = useRef(new Set());
 
+  // "Server is waking up" signal from api.js
+  useEffect(() => api.onServerSlow(setServerSlow), []);
+
+  // Brief "All changes saved" confirmation after pending saves finish
+  const prevSaving = useRef(0);
+  useEffect(() => {
+    if (prevSaving.current > 0 && saveStatus.saving === 0 && saveStatus.held === 0) {
+      setSavedFlash(true);
+      const t = setTimeout(() => setSavedFlash(false), 2500);
+      prevSaving.current = saveStatus.saving;
+      return () => clearTimeout(t);
+    }
+    prevSaving.current = saveStatus.saving;
+  }, [saveStatus.saving, saveStatus.held]);
+
+  // Warn before closing the tab while something is unsaved
+  useEffect(() => {
+    if (saveStatus.saving === 0 && saveStatus.held === 0) return;
+    const warn = e => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saveStatus.saving, saveStatus.held]);
+
+  function showToast(message) {
+    setToast(message);
+    setTimeout(() => setToast(t => (t === message ? null : t)), 7000);
+  }
 
   // Load all data when user logs in
   useEffect(() => {
@@ -139,12 +193,13 @@ export default function App() {
         api.fetchServiceJobs(),
         api.fetchReplacements(),
       ]);
-      setAllOrders(orders);
+      queue.setServerOrders(orders);
       setAllVendors(vendors);
       setAllServiceJobs(jobs);
       setAllReplacements(replacements);
     } catch (err) {
-      setError("Failed to load data. Please refresh.");
+      if (err && err.auth) setSessionExpired(true);
+      else setError("Failed to load data: " + ((err && err.message) || "unknown error") + " Please retry.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -155,77 +210,42 @@ export default function App() {
 
   function navigate(p, orderId = null, vendorId = null) {
     setPage(p);
-    if (orderId) setSelectedOrderId(orderId);
+    if (orderId) {
+      const match = allOrders.find(o => o.id === orderId || o._id === orderId);
+      setSelectedOrderId(match ? match._id : orderId);
+    }
     if (vendorId) setSelectedVendorId(vendorId);
   }
 
-  const selectedOrder = allOrders.find(o => o.id === selectedOrderId || o._id === selectedOrderId);
+  const selectedOrder = allOrders.find(o => o._id === selectedOrderId || o.id === selectedOrderId);
 
-  // updatedOrder may carry an optional _editLogField — a short string like "Address" or
-  // "Product images" — set by OrderDetail.jsx when the change should be recorded in the
-  // order's edit history. The backend appends { changedBy, field, changedAt } server-side
-  // using the authenticated user's name, so the client never has to trust its own clock
-  // or identity for the log entry itself.
-  // Every call site in OrderDetail.jsx builds its update by spreading the
-  // FULL order object and changing one field, e.g. `onUpdate({ ...order,
-  // notes: x })`. That `order` is this session's own cached copy from
-  // allOrders, which is fetched ONCE at login (see loadAllData/useEffect
-  // above) and never refreshed — so it can be hours stale relative to the
-  // server if anyone else (another admin, another tab, this same user in a
-  // second window) has touched this order since. Sending the whole stale
-  // object as the PUT body used to silently overwrite EVERY field back to
-  // this session's old values, including ones nobody here meant to touch —
-  // e.g. Admin A editing notes from a stale snapshot would revert Admin B's
-  // more recent "Archive" back to active, because A's payload still carried
-  // status: "active" and the backend has no way to know that wasn't
-  // deliberate. Confirmed by reproducing this exact sequence against the
-  // real backend route logic.
+  // ── ORDER EDITS ────────────────────────────────────────────
+  // `arg` is either a full updated order object (what most call sites build), or a
+  // function (currentOrder) => updatedOrder. The function form is used for things that
+  // finish later (photo uploads) so they always build from the LATEST order rather
+  // than a snapshot taken minutes ago. The optional `_editLogField` on the result is
+  // the short label recorded in the order's edit history ("Address", "Stage advanced"…).
   //
-  // Fix: diff `orderToSave` against our own last-known copy of the order
-  // (originalOrder) and send ONLY the field(s) that differ. A field this
-  // session never touched is simply absent from the payload, so the
-  // backend's Object.assign(freshOrderFromDB, payload) leaves it at
-  // whatever the CURRENT server value is — including any concurrent change
-  // this session doesn't know about yet. Comparison is by JSON value, not
-  // reference, since some call sites happen to create new references for
-  // nested fields (items, customer) without changing their content.
-  function diffOrderFields(next, original) {
-    if (!original) return next; // no local baseline to diff against — send as-is
-    const diffed = {};
-    for (const key of Object.keys(next)) {
-      if (key === "_id" || key === "id") continue; // always carried through below
-      if (JSON.stringify(next[key]) !== JSON.stringify(original[key])) {
-        diffed[key] = next[key];
-      }
+  // Returns { accepted, saved }. `accepted` is false only when this order already has
+  // an unsaved change waiting on Retry/Discard — the edit is refused (and nothing is
+  // silently dropped). `saved` resolves true/false when the save finishes.
+  function handleUpdateOrder(arg, forKey) {
+    const key = (typeof arg !== "function" && arg && arg._id) || forKey;
+    const base = key ? queue.display(key) : undefined;
+    if (!base) return { accepted: false, saved: Promise.resolve(false) };
+    const next = typeof arg === "function" ? arg(base) : arg;
+    const result = queue.enqueue(key, computePatch(base, next));
+    if (result.blocked) {
+      showToast("This order has a change that hasn't been saved. Press Retry or Discard in the red bar at the top before making more changes.");
     }
-    diffed._id = next._id;
-    diffed.id = next.id;
-    return diffed;
-  }
-
-  async function handleUpdateOrder(updatedOrder) {
-    const { _editLogField, ...orderToSave } = updatedOrder;
-    try {
-      const originalOrder = allOrders.find(o => o._id === orderToSave._id);
-      const originalId = originalOrder?.id || orderToSave.id;
-      const diffedFields = diffOrderFields(orderToSave, originalOrder);
-      const payload = _editLogField
-        ? { ...diffedFields, editLogEntry: { field: _editLogField } }
-        : diffedFields;
-      const saved = await api.updateOrder(originalId, payload);
-      if (!saved || !saved._id) return;
-      setAllOrders(prev => prev.map(o => (o._id === saved._id) ? saved : o));
-      if (saved.id !== originalId) setSelectedOrderId(saved.id);
-    } catch (err) {
-      console.error("Update order error:", err);
-      setAllOrders(prev => prev.map(o => o._id === orderToSave._id ? orderToSave : o));
-    }
+    return result;
   }
 
   async function handleDeleteOrder(orderId) {
+    const order = allOrders.find(o => o.id === orderId || o._id === orderId);
     try {
-      await api.deleteOrder(orderId);
-      setAllOrders(prev => prev.filter(o => o.id !== orderId));
+      await api.deleteOrder(order ? order.id : orderId);
+      if (order) queue.removeOrder(order._id);
       setSelectedOrderId(null);
       navigate("orders", null);
     } catch (err) {
@@ -234,41 +254,82 @@ export default function App() {
     }
   }
 
+  // Creating an order either succeeds on the server or throws — it is never added
+  // "locally" as a pretend success. The form stays open (with the user's data) on error.
   async function handleNewOrder(newOrder) {
+    if (creatingRef.current.has(newOrder.id)) {
+      throw new Error("This order is already being created — please wait a moment.");
+    }
+    creatingRef.current.add(newOrder.id);
     try {
-      const saved = await api.createOrder(newOrder);
-      setAllOrders(prev => [saved, ...prev]);
-      navigate("orders", saved.id);
-    } catch (err) {
-      console.error("Create order error:", err);
-      // Fallback: add locally
-      setAllOrders(prev => [newOrder, ...prev]);
-      navigate("orders", newOrder.id);
+      let saved;
+      try {
+        saved = await api.createOrder(newOrder);
+      } catch (err) {
+        if (/E11000|duplicate key|already exists/i.test((err && err.message) || "")) {
+          // Either someone else just took this ID, or our own earlier attempt actually
+          // went through and only the reply was lost. Check which.
+          const existing = await api.fetchOrder(newOrder.id).catch(() => null);
+          const mine = existing && existing._id
+            && String(existing.createdBy) === String(currentUser && currentUser.id)
+            && existing.customer && existing.customer.name === newOrder.customer.name
+            && existing.value === newOrder.value;
+          if (mine) {
+            saved = existing;
+          } else {
+            const e = new Error(`Order ID ${newOrder.id} was just taken by another order.`);
+            e.code = "DUPLICATE_ID";
+            throw e;
+          }
+        } else {
+          throw err;
+        }
+      }
+      if (!saved || !saved._id) throw new Error("The server did not confirm the new order. Please try again.");
+      queue.upsertServer(saved, { prepend: true });
+      navigate("orders", saved._id);
+      return saved;
+    } finally {
+      creatingRef.current.delete(newOrder.id);
     }
   }
 
+  // Vendors: the vendor only appears once the server has saved it. (It used to be added
+  // locally on failure with a made-up id; assigning that vendor to an order then made
+  // the order itself unsaveable.)
   async function handleAddVendor(vendor) {
     try {
-      const saved = await api.createVendor(vendor);
+      const { id, orders, onTimeRate, flags, totalBilled, ...toSave } = vendor; // drop UI-only placeholder fields
+      const saved = await api.createVendor(toSave);
       setAllVendors(prev => [...prev, saved]);
+      return saved;
     } catch (err) {
-      setAllVendors(prev => [...prev, vendor]);
+      showToast(`Vendor "${vendor.name}" was NOT saved: ${(err && err.message) || "unknown error"}. Please add it again.`);
+      return null;
     }
   }
 
   async function handleAddVendors(vendors) {
     try {
-      const saved = await api.importVendors(vendors);
+      const cleaned = vendors.map(({ id, orders, onTimeRate, flags, totalBilled, ...rest }) => rest);
+      const saved = await api.importVendors(cleaned);
       setAllVendors(prev => [...prev, ...saved]);
+      return saved;
     } catch (err) {
-      setAllVendors(prev => [...prev, ...vendors]);
+      showToast(`Vendor import was NOT saved: ${(err && err.message) || "unknown error"}. Please try the import again.`);
+      return null;
     }
   }
 
   function handleLogout() {
+    if ((saveStatus.saving > 0 || saveStatus.held > 0) &&
+        !window.confirm("You have changes that have not been saved. They will be lost if you sign out. Sign out anyway?")) {
+      return;
+    }
     api.logout();
     setCurrentUser(null);
-    setAllOrders([]);
+    setSessionExpired(false);
+    queue.reset();
     setAllVendors([]);
     setAllServiceJobs([]);
     setAllReplacements([]);
@@ -329,6 +390,58 @@ export default function App() {
             </div>
           )}
 
+          {/* ── SAVE / CONNECTION STATUS ───────────────────────────────
+              Everything here exists so that "did it save?" always has an honest,
+              visible answer. */}
+          <div style={{ position: "sticky", top: 52, zIndex: 90 }}>
+            {sessionExpired && (
+              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <span><strong>Your session has expired.</strong> Sign in again to keep working.{(saveStatus.saving > 0 || saveStatus.held > 0) ? " Changes that were not saved will be lost." : ""}</span>
+                <button onClick={handleLogout} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Sign in again</button>
+              </div>
+            )}
+            {saveStatus.held > 0 && (
+              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <span>
+                  <strong>{saveStatus.held} change{saveStatus.held > 1 ? "s" : ""} NOT saved</strong>
+                  {saveStatus.heldOrderIds.length > 0 ? ` on ${saveStatus.heldOrderIds.join(", ")}` : ""}
+                  {saveStatus.heldLabels.length > 0 ? ` (${saveStatus.heldLabels.join(", ")})` : ""}
+                  {saveStatus.error ? ` — ${saveStatus.error}` : ""}
+                </span>
+                <span style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => queue.retryHeld()} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Retry</button>
+                  <button onClick={() => { if (window.confirm("Discard the unsaved change(s)? What you typed will be lost.")) queue.discardHeld(); }} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "transparent", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Discard</button>
+                </span>
+              </div>
+            )}
+            {saveStatus.held === 0 && saveStatus.retrying && (
+              <div style={{ background: "#FAEEDA", borderBottom: "0.5px solid #E8C98A", padding: "8px 24px", fontSize: 12, color: "#633806" }}>
+                Connection problem — still trying to save. Please keep this page open.
+              </div>
+            )}
+            {saveStatus.held === 0 && !saveStatus.retrying && serverSlow && (
+              <div style={{ background: "#FAEEDA", borderBottom: "0.5px solid #E8C98A", padding: "8px 24px", fontSize: 12, color: "#633806" }}>
+                The server is waking up — this can take up to a minute. Please keep this page open and don't click again.
+              </div>
+            )}
+            {saveStatus.held === 0 && !saveStatus.retrying && !serverSlow && saveStatus.saving > 0 && (
+              <div style={{ background: "var(--color-background-info)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "6px 24px", fontSize: 12, color: "var(--color-text-info)" }}>
+                Saving…
+              </div>
+            )}
+            {saveStatus.held === 0 && saveStatus.saving === 0 && savedFlash && (
+              <div style={{ background: "#EAF3DE", borderBottom: "0.5px solid #C0DD97", padding: "6px 24px", fontSize: 12, color: "#27500A" }}>
+                ✓ All changes saved
+              </div>
+            )}
+            {toast && (
+              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "8px 24px", fontSize: 12, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <span>{toast}</span>
+                <button onClick={() => setToast(null)} style={{ fontSize: 12, padding: "2px 10px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Dismiss</button>
+              </div>
+            )}
+          </div>
+
           <main style={{ padding: "20px 24px" }}>
             {page === "dashboard" && <Dashboard orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} />}
             {page === "orders" && !selectedOrderId && (
@@ -339,7 +452,7 @@ export default function App() {
             {page === "orders" && selectedOrderId && selectedOrder && (
               <OrderDetail order={selectedOrder} role={role} vendors={allVendors}
                 onBack={() => setSelectedOrderId(null)}
-                onUpdate={handleUpdateOrder}
+                onUpdate={arg => handleUpdateOrder(arg, selectedOrder._id)}
                 onDelete={handleDeleteOrder}
                 onVendorClick={(vid) => navigate("vendors", null, vid)}
                 onVendorCreated={v => setAllVendors(prev => [...prev, v])}
@@ -360,7 +473,7 @@ export default function App() {
                 onOrderClick={(id) => navigate("orders", id)} />
             )}
             {page === "reports" && <Reports orders={allOrders} role={role} />}
-            {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={handleUpdateOrder} />}
+            {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={arg => handleUpdateOrder(arg)} />}
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
           </main>

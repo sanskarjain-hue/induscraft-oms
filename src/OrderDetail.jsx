@@ -3,7 +3,7 @@ import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
 import { STAGES } from "./data";
-import { uploadFile } from "./api";
+import { useUploads, PendingTiles } from "./useUploads";
 
 // FIX: orders saved before the item.id schema fix have items with no `id` field
 // (it was silently stripped by Mongoose strict mode). This helper falls back to
@@ -102,6 +102,7 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
           <div style={{ padding: "5px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
             <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>Address</div>
             <textarea
+              key={order.customer.address || ""}
               defaultValue={order.customer.address || ""}
               onBlur={e => {
                 if (e.target.value === (order.customer.address || "")) return;
@@ -151,7 +152,7 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 3 }}>Confirm final date</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input type="date" defaultValue={order.items[0]?.originalDelivery || ""}
+                <input type="date" key={order.items[0]?.originalDelivery || ""} defaultValue={order.items[0]?.originalDelivery || ""}
                   id="confirm-delivery-input"
                   style={{ fontSize: 13, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit" }} />
                 <button onClick={() => {
@@ -295,7 +296,7 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
         </Card>
         <Card>
           <SectionTitle>Notes</SectionTitle>
-          <textarea defaultValue={order.notes}
+          <textarea key={order.notes || ""} defaultValue={order.notes}
             onBlur={e => {
               if (e.target.value === (order.notes || "")) return;
               onUpdate({ ...order, notes: e.target.value, _editLogField: "Notes" });
@@ -308,20 +309,18 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
 }
 
 // ── STAGE PHOTO STRIP ─────────────────────────────────────
-function StagePhotoStrip({ photos, label, canUpload, onUpload }) {
+function StagePhotoStrip({ photos, label, canUpload, onAddPhoto }) {
+  // Photos are uploaded to Cloudinary first; only the finished { url } is added to the
+  // order (one small save per photo). Previously the raw base64 image was written
+  // straight into the order document, and picking several photos kept only the last.
+  const uploads = useUploads((_scope, photo) => onAddPhoto(photo));
+
   function handleFiles(e) {
-    Array.from(e.target.files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const updated = [...photos, { name: file.name, type: file.type, data: ev.target.result }];
-        onUpload(updated);
-      };
-      reader.readAsDataURL(file);
-    });
+    uploads.addFiles("strip", e.target.files);
     e.target.value = "";
   }
 
-  if (!canUpload && photos.length === 0) return null;
+  if (!canUpload && photos.length === 0 && uploads.pending.length === 0) return null;
 
   return (
     <div style={{ marginTop: 10 }}>
@@ -357,6 +356,7 @@ function StagePhotoStrip({ photos, label, canUpload, onUpload }) {
             </div>
           );
         })}
+        <PendingTiles items={uploads.pending} onRetry={uploads.retry} onDismiss={uploads.dismiss} size={64} />
         {canUpload && (
           <label style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px dashed var(--color-border-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 3, flexShrink: 0 }}>
             <i className="ti ti-upload" style={{ fontSize: 16, color: "var(--color-text-secondary)" }} />
@@ -534,7 +534,7 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
           <div>
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Committed delivery</div>
-            <input type="date" defaultValue={item.committedDate || ""}
+            <input type="date" key={item.committedDate || ""} defaultValue={item.committedDate || ""}
               onBlur={e => {
                 if (e.target.value === (item.committedDate || "")) return;
                 const ckey = itemKey(item); onUpdate({ ...order, items: order.items.map(i => itemKey(i) === ckey ? { ...i, committedDate: e.target.value } : i), _editLogField: "Committed delivery date" });
@@ -543,7 +543,7 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
           </div>
           <div>
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 5 }}>Vendor cost (₹)</div>
-            <input type="number" defaultValue={item.vendorCost || ""}
+            <input type="number" key={item.vendorCost || ""} defaultValue={item.vendorCost || ""}
               onBlur={e => {
                 const parsed = parseFloat(e.target.value) || 0;
                 if (parsed === (item.vendorCost || 0)) return;
@@ -562,78 +562,35 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // independent of which stage it's in. This logs an edit-log entry so it's clear
   // who changed the reference photos and when.
   //
-  // Images go through Cloudinary (uploadFile), same as NewOrderForm — never store raw
-  // base64 directly in the order document. Base64-in-MongoDB was the exact problem
-  // behind the earlier image migration; storing it here again would silently
-  // reintroduce it for every image edited after order creation.
-  //
-  // buildUpdated/buildReplaced take an explicit `base` order rather than closing over
-  // the `order` prop. This matters across await boundaries (e.g. while a Cloudinary
-  // upload is in flight): the component can re-render with a fresh `order` prop in
-  // that window, and a closure over the original prop would silently overwrite
-  // whatever changed in between when the second save fires.
-  // `field` is either "images" (product photos) or "measurementPhotos" (measurement
-  // drawings/sketches) — same upload/edit machinery serves both, parameterised so
-  // measurement photos get the exact same Cloudinary-backed, editable treatment as
-  // product images rather than a second, divergent implementation.
-  function buildAdded(base, key, field, newImages) {
-    return {
-      ...base,
-      items: base.items.map(i => itemKey(i) === key ? { ...i, [field]: [...(i[field] || []), ...newImages] } : i),
+  // Upload flow: each file is uploaded to Cloudinary first (the picture is shown from
+  // browser memory with an "Uploading…" overlay). Only when the upload has succeeded is
+  // the finished { url } added to the order, as its own small save that is applied on
+  // top of the LATEST order. Nothing is ever stored as base64, selecting several photos
+  // keeps all of them, and finishing an upload can no longer revert other changes.
+  // A failed upload stays visible with Retry / Remove and writes nothing to the order.
+  // `field` is either "images" (product photos) or "measurementPhotos".
+  const uploads = useUploads((scope, photo) => {
+    const cut = scope.lastIndexOf("|");
+    const key = scope.slice(0, cut);
+    const field = scope.slice(cut + 1);
+    return onUpdate(o => ({
+      ...o,
+      items: o.items.map(i => itemKey(i) === key ? { ...i, [field]: [...(i[field] || []), photo] } : i),
       _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
-    };
-  }
-
-  function buildReplacedAt(base, key, field, idx, newImage) {
-    return {
-      ...base,
-      items: base.items.map(i => {
-        if (itemKey(i) !== key) return i;
-        const imgs = [...(i[field] || [])];
-        imgs[idx] = newImage;
-        return { ...i, [field]: imgs };
-      }),
-      _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
-    };
-  }
+    }));
+  });
+  const pendingFor = (key, field) => uploads.pending.filter(p => p.scope === `${key}|${field}`);
 
   function removeItemImage(key, field, imgIdx) {
-    const updated = {
-      ...order,
-      items: order.items.map(i => itemKey(i) === key ? { ...i, [field]: (i[field] || []).filter((_, idx) => idx !== imgIdx) } : i),
+    onUpdate(o => ({
+      ...o,
+      items: o.items.map(i => itemKey(i) === key ? { ...i, [field]: (i[field] || []).filter((_, idx) => idx !== imgIdx) } : i),
       _editLogField: field === "measurementPhotos" ? "Measurement photos" : "Product images",
-    };
-    onUpdate(updated);
+    }));
   }
 
-  async function handleFileSelect(key, field, fileList) {
-    for (const file of Array.from(fileList)) {
-      // Show an instant base64 preview while the real upload runs in the background,
-      // then swap it for the Cloudinary URL once the upload resolves.
-      const reader = new FileReader();
-      reader.onload = async ev => {
-        const previewImage = { name: file.name, type: file.type, data: ev.target.result, uploading: true };
-        const item = order.items.find(i => itemKey(i) === key);
-        const insertIdx = (item[field] || []).length;
-
-        // Build and save the preview-inserted order; remember exactly what we sent
-        // so the follow-up save starts from that same state rather than re-reading
-        // (possibly stale, possibly fresher-but-different) component props.
-        const withPreview = buildAdded(order, key, field, [previewImage]);
-        onUpdate(withPreview);
-
-        try {
-          const result = await uploadFile(file, "orders");
-          const withFinal = buildReplacedAt(withPreview, key, field, insertIdx, { name: file.name, type: file.type, url: result.url, publicId: result.publicId });
-          onUpdate(withFinal);
-        } catch {
-          // Upload failed — leave the base64 preview in place rather than losing the image.
-          const withFallback = buildReplacedAt(withPreview, key, field, insertIdx, { name: file.name, type: file.type, data: ev.target.result });
-          onUpdate(withFallback);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+  function handleFileSelect(key, field, fileList) {
+    uploads.addFiles(`${key}|${field}`, fileList);
   }
 
   // Opened to everyone — product/measurement images are editable by any role.
@@ -685,9 +642,9 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                   </label>
                 )}
               </div>
-              {item.images && item.images.length > 0 ? (
+              {(item.images && item.images.length > 0) || pendingFor(key, "images").length > 0 ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {item.images.map((img, i) => {
+                  {(item.images || []).map((img, i) => {
                     const isImage = img.type && img.type.startsWith("image/");
                     const src = img.url || img.data;
                     return (
@@ -731,6 +688,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                       </div>
                     );
                   })}
+                  <PendingTiles items={pendingFor(key, "images")} onRetry={uploads.retry} onDismiss={uploads.dismiss} />
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No images uploaded yet.</div>
@@ -752,9 +710,9 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                   </label>
                 )}
               </div>
-              {item.measurementPhotos && item.measurementPhotos.length > 0 ? (
+              {(item.measurementPhotos && item.measurementPhotos.length > 0) || pendingFor(key, "measurementPhotos").length > 0 ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {item.measurementPhotos.map((img, i) => {
+                  {(item.measurementPhotos || []).map((img, i) => {
                     const isImage = img.type && img.type.startsWith("image/");
                     const src = img.url || img.data;
                     return (
@@ -798,6 +756,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                       </div>
                     );
                   })}
+                  <PendingTiles items={pendingFor(key, "measurementPhotos")} onRetry={uploads.retry} onDismiss={uploads.dismiss} />
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No measurement drawings uploaded yet.</div>
@@ -1129,7 +1088,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             photos={item.rawPhotos || []}
                             label="Raw product photos"
                             canUpload={true}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotos: newPhotos } : i), _editLogField: "Raw product photos" })}
+                            onAddPhoto={photo => onUpdate(o => ({ ...o, items: o.items.map(i => itemKey(i) === itemKey(item) ? { ...i, rawPhotos: [...(i.rawPhotos || []), photo] } : i), _editLogField: "Raw product photos" }))}
                           />
                           {(item.rawPhotos || []).length > 0 && !item.rawPhotosApproved && (
                             <div style={{ marginTop: 8 }}>
@@ -1192,7 +1151,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             photos={item.finishingPhotos || []}
                             label="In-progress photos"
                             canUpload={true}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, finishingPhotos: newPhotos } : i), _editLogField: "In-progress photos" })}
+                            onAddPhoto={photo => onUpdate(o => ({ ...o, items: o.items.map(i => itemKey(i) === itemKey(item) ? { ...i, finishingPhotos: [...(i.finishingPhotos || []), photo] } : i), _editLogField: "In-progress photos" }))}
                           />
                         </div>
                       )}
@@ -1225,7 +1184,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                             photos={item.qcPhotos || []}
                             label="QC inspection photos"
                             canUpload={true}
-                            onUpload={newPhotos => onUpdate({ ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, qcPhotos: newPhotos } : i), _editLogField: "QC inspection photos" })}
+                            onAddPhoto={photo => onUpdate(o => ({ ...o, items: o.items.map(i => itemKey(i) === itemKey(item) ? { ...i, qcPhotos: [...(i.qcPhotos || []), photo] } : i), _editLogField: "QC inspection photos" }))}
                           />
                         </div>
                       )}
@@ -1234,7 +1193,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                         <div style={{ marginTop: 8 }}>
                           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>Number of packets for this item</div>
                           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                            <input type="number" min="1" defaultValue={item.packetCount || ""}
+                            <input type="number" min="1" key={item.packetCount || ""} defaultValue={item.packetCount || ""}
                               placeholder="e.g. 3"
                               onBlur={e => {
                                 const updated = { ...order, items: order.items.map(i => itemKey(i) === itemKey(item) ? { ...i, packetCount: parseInt(e.target.value) || 0 } : i), _editLogField: "Packet count" };

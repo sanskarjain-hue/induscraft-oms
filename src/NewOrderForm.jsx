@@ -34,6 +34,14 @@ function Field({ label, children, style = {} }) {
   );
 }
 
+// Only finished uploads (those with a Cloudinary/Shopify url) are ever saved — to the
+// order OR to the localStorage draft. Temporary previews and failed uploads live in
+// browser memory only. (Previews used to be stored as base64, which could blow past
+// MongoDB's 16 MB document limit and localStorage's ~5 MB quota.)
+function cleanFiles(arr) {
+  return (arr || []).filter(f => f && f.url).map(({ name, type, url, publicId }) => ({ name, type, url, publicId }));
+}
+
 function emptyItem() {
   return {
     _id: Date.now() + Math.random(),
@@ -66,39 +74,37 @@ function emptyItem() {
 // ── FILE UPLOAD AREA ──────────────────────────────────────
 function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint }) {
   const ref = useRef();
+  const blobs = useRef(new Map()); // tempId -> File, kept so a failed upload can be retried
 
-  async function readFiles(fileList) {
-    const fileArray = Array.from(fileList);
-    for (const file of fileArray) {
-      // Show preview immediately with base64 while uploading
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const preview = { name: file.name, type: file.type, data: e.target.result, uploading: true };
-        onAdd(prev => multiple ? [...prev, preview] : [preview]);
-        try {
-          // Upload to Cloudinary
-          const result = await uploadFile(file, "orders");
-          const uploaded = { name: file.name, type: file.type, url: result.url, publicId: result.publicId };
-          // Replace preview with Cloudinary version
-          onAdd(prev => {
-            const idx = prev.findIndex(p => p.data === e.target.result);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = uploaded;
-            return next;
-          });
-        } catch {
-          // Keep base64 as fallback if upload fails
-          onAdd(prev => {
-            const idx = prev.findIndex(p => p.data === e.target.result);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = { name: file.name, type: file.type, data: e.target.result };
-            return next;
-          });
-        }
+  async function upload(tempId) {
+    const file = blobs.current.get(tempId);
+    if (!file) return;
+    onAdd(prev => prev.map(f => f.tempId === tempId ? { ...f, uploading: true, failed: false, error: null } : f));
+    try {
+      const result = await uploadFile(file, "orders");
+      blobs.current.delete(tempId);
+      onAdd(prev => prev.map(f => {
+        if (f.tempId !== tempId) return f;
+        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+        return { name: file.name, type: file.type, url: result.url, publicId: result.publicId };
+      }));
+    } catch (err) {
+      // No base64 fallback any more: a failed upload stays visible as FAILED with a
+      // Retry button, and Create order is blocked until it is retried or removed.
+      onAdd(prev => prev.map(f => f.tempId === tempId ? { ...f, uploading: false, failed: true, error: (err && err.message) || "Upload failed" } : f));
+    }
+  }
+
+  function readFiles(fileList) {
+    for (const file of Array.from(fileList)) {
+      const tempId = `up_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      blobs.current.set(tempId, file);
+      const preview = {
+        tempId, name: file.name, type: file.type, uploading: true,
+        previewUrl: file.type && file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
       };
-      reader.readAsDataURL(file);
+      onAdd(prev => multiple ? [...prev, preview] : [preview]);
+      upload(tempId);
     }
   }
 
@@ -132,7 +138,7 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
           {files.map((f, i) => (
             <div key={i} style={{ position: "relative" }}>
               {isImage(f) ? (
-                <img src={f.url || f.data} alt={f.name}
+                <img src={f.url || f.previewUrl} alt={f.name}
                   style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", display: "block" }} />
               ) : (
                 <div style={{ width: 64, height: 64, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -142,10 +148,21 @@ function FileUploadArea({ label, accept, multiple = false, files, onAdd, hint })
               )}
               {f.uploading && (
                 <div style={{ position: "absolute", inset: 0, borderRadius: 8, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ fontSize: 9, color: "white", fontWeight: 500 }}>Uploading</div>
+                  <div style={{ fontSize: 9, color: "white", fontWeight: 500 }}>Uploading…</div>
                 </div>
               )}
-              <button onClick={() => onAdd(files.filter((_, j) => j !== i))}
+              {f.failed && (
+                <div title={f.error || ""} style={{ position: "absolute", inset: 0, borderRadius: 8, background: "rgba(192,57,43,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                  <div style={{ fontSize: 9, color: "white", fontWeight: 600 }}>Failed</div>
+                  <button onClick={() => upload(f.tempId)} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 5, border: "none", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Retry</button>
+                </div>
+              )}
+              <button onClick={() => {
+                  const k = f.tempId || f.url;
+                  if (f.tempId) blobs.current.delete(f.tempId);
+                  if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+                  onAdd(prev => prev.filter(x => (x.tempId || x.url) !== k));
+                }}
                 style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C0392B", border: "none", cursor: "pointer", color: "white", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <i className="ti ti-x" />
               </button>
@@ -322,6 +339,9 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [lookingUp, setLookingUp] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const submittingRef = useRef(false);
 
   // If opened from a Won deal, fetch the order ID and clear prefill
   useEffect(() => {
@@ -352,7 +372,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   // Auto-save draft whenever any field changes
   const saveDraft = useCallback(() => {
     try {
-      const draft = { step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery };
+      const draftItems = items.map(it => ({ ...it, images: cleanFiles(it.images), measurementPhotos: cleanFiles(it.measurementPhotos) }));
+      const draft = { step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items: draftItems, notes, originalDelivery };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch {}
   }, [step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery]);
@@ -375,7 +396,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       if (d.custName) setCustName(d.custName);
       if (d.custPhone) setCustPhone(d.custPhone);
       if (d.custAddress) setCustAddress(d.custAddress);
-      if (d.items) setItems(d.items);
+      if (d.items) setItems(d.items.map(it => ({ ...it, images: cleanFiles(it.images), measurementPhotos: cleanFiles(it.measurementPhotos) })));
       if (d.notes) setNotes(d.notes);
       if (d.originalDelivery) setOriginalDelivery(d.originalDelivery);
       setHasDraft(false);
@@ -528,8 +549,21 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (submittingRef.current) return;            // ignore double-clicks
     if (!validateStep(4)) return;
+    setSubmitError("");
+
+    // Every image must be a finished upload before the order can be created.
+    const allFiles = items.flatMap(i => [...(i.images || []), ...(i.measurementPhotos || [])]);
+    if (allFiles.some(f => f.uploading)) {
+      setSubmitError("Some images are still uploading. Wait for them to finish, then press Create order again.");
+      return;
+    }
+    if (allFiles.some(f => !f.url)) {
+      setSubmitError("Some images failed to upload. Press Retry on them, or remove them (✕), then press Create order again.");
+      return;
+    }
     const orderId = customOrderId;
     const totalValue = items.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
     const newOrder = {
@@ -552,8 +586,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
         woodColour: item.woodColour,
         fabricCode: item.fabricCode || null,
         hardware: item.hardware,
-        images: item.images || [],
-        measurementPhotos: item.measurementPhotos || [],
+        images: cleanFiles(item.images),
+        measurementPhotos: cleanFiles(item.measurementPhotos),
         remarks: item.remarks,
         finishingSteps: item.finishingSteps,
         vendorId: null,
@@ -571,8 +605,24 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       })),
       payments: [],
     };
-    clearDraftOnSave();
-    onSave(newOrder);
+    // The draft is kept until the server has confirmed the order. If saving fails the
+    // form stays open with everything the user entered.
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      await onSave(newOrder);
+      clearDraftOnSave();
+    } catch (err) {
+      if (err && err.code === "DUPLICATE_ID") {
+        setSubmitError(`${err.message} A fresh ID has been suggested — you can check it on step 1 — then press Create order again.`);
+        try { const { id } = await fetchNextOrderId(channel); setCustomOrderId(id); } catch {}
+      } else {
+        setSubmitError("The order was NOT saved: " + ((err && err.message) || "unknown error") + " Everything you entered is still here — press Create order to try again.");
+      }
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   const totalValue = items.reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseInt(i.qty) || 1), 0);
@@ -889,6 +939,12 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
           )}
         </div>
 
+        {submitError && (
+          <div style={{ margin: "0 24px 10px", padding: "10px 12px", borderRadius: 8, background: "#FCEBEB", border: "0.5px solid #F09595", color: "#791F1F", fontSize: 12 }}>
+            {submitError}
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{ padding: "14px 24px", borderTop: "0.5px solid #e5e5e0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button onClick={step === 1 ? onCancel : () => setStep(s => s - 1)} style={{
@@ -908,12 +964,12 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
               Next →
             </button>
           ) : (
-            <button onClick={handleSave} style={{
+            <button onClick={handleSave} disabled={submitting} style={{
               fontSize: 13, padding: "8px 22px", borderRadius: 8, border: "none",
-              background: "#27500A", color: "white", cursor: "pointer",
+              background: submitting ? "#7a9a63" : "#27500A", color: "white", cursor: submitting ? "wait" : "pointer",
               fontWeight: 500, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
             }}>
-              <i className="ti ti-check" style={{ fontSize: 14 }} /> Create order
+              <i className="ti ti-check" style={{ fontSize: 14 }} /> {submitting ? "Creating…" : "Create order"}
             </button>
           )}
         </div>
