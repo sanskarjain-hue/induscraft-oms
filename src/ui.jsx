@@ -254,3 +254,141 @@ export function firstItemImageSrc(item) {
   if (!img) return null;
   return img.url || img.data || null;
 }
+
+// ── DELIVERY DATES ────────────────────────────────────────
+// Delivery dates are stored in two formats: ISO "YYYY-MM-DD" (order form / date picker)
+// and en-GB "15 Oct 2026" (written by "Log delay" in OrderDetail.jsx). Comparing them as
+// strings or via new Date() gives wrong answers, so the dashboard reads them through these
+// helpers, which accept both and need no data migration. Dates are read as local calendar days.
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function parseDeliveryDate(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{4})/);
+  if (m) {
+    const mi = MONTH_ABBR.findIndex(a => a.toLowerCase() === m[2].slice(0, 3).toLowerCase());
+    if (mi >= 0) return new Date(+m[3], mi, +m[1]);
+  }
+  const d = new Date(s);
+  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+export function formatDeliveryDate(date) {
+  if (!date) return "\u2014";
+  return `${String(date.getDate()).padStart(2, "0")} ${MONTH_ABBR[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export function startOfToday() {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Latest expected delivery across an order's items, as a Date (or null).
+export function latestDeliveryDate(order) {
+  let best = null;
+  for (const i of order.items) {
+    const d = parseDeliveryDate(i.currentDelivery);
+    if (d && (!best || d > best)) best = d;
+  }
+  return best;
+}
+
+// Whole days the order is past its expected delivery date (0 if not overdue). Looks at every
+// item not yet delivered, uses the CURRENT date, and is NOT affected by whether the date was
+// rescheduled before — unlike delayStatus(), which reports "delayed" for any rescheduled order
+// even if the new date has also passed. An order is overdue the day AFTER its date.
+export function daysOverdue(order, today = startOfToday()) {
+  let worst = 0;
+  for (const i of order.items) {
+    if (i.stageIndex >= 8) continue;
+    const due = parseDeliveryDate(i.currentDelivery);
+    if (!due) continue;
+    const late = Math.round((today - due) / DAY_MS);
+    if (late > worst) worst = late;
+  }
+  return worst;
+}
+
+export function isOrderOverdue(order, today = startOfToday()) {
+  return daysOverdue(order, today) > 0;
+}
+
+// ── ORDER STAGE + DASHBOARD GROUPING ──────────────────────
+// An order is only as far along as its LEAST advanced item. This matches the Stage badge,
+// the Stage sort and isPastOrder (every item delivered), and is used for the dashboard cards
+// and stage filter so they always agree with what the table shows.
+export function orderStage(order) {
+  return order.items.length ? Math.min(...order.items.map(i => i.stageIndex)) : 0;
+}
+
+export function stageBucket(stageIndex) {
+  if (stageIndex < 2) return "pending";
+  if (stageIndex < 6) return "production";
+  if (stageIndex < 8) return "dispatched";
+  return "completed";
+}
+
+// ── NEEDS-ATTENTION GATES ─────────────────────────────────
+// Items that cannot move forward until a person acts. Derived from the production workflow
+// in OrderDetail.jsx (TrackerTab): vendor gate (0→1), raw-photo approval gate (stage 2),
+// warehouse hold (stage 7), and a recorded QC fail. Overdue is handled separately.
+export const ATTENTION_TYPES = {
+  vendor:    { chip: "No vendor",    who: "Admin" },
+  raw:       { chip: "Raw photos",   who: "QC / salesperson" },
+  warehouse: { chip: "At warehouse", who: "Salesperson / admin" },
+  qcfail:    { chip: "QC failed",    who: "Admin" },
+};
+
+// Returns one entry per gate type that applies to the order (aggregated across its items):
+// { type, label, count, who, itemNames }
+export function getOrderAttention(order) {
+  const found = {};
+  const add = (type, label, item) => {
+    if (!found[type]) found[type] = { type, labels: new Set(), count: 0, itemNames: [] };
+    found[type].labels.add(label);
+    found[type].count += 1;
+    found[type].itemNames.push(item.name || "Item");
+  };
+  for (const item of order.items) {
+    const s = item.stageIndex;
+    if (s === 0) add("vendor", "No vendor assigned", item);
+    if (s === 2 && !item.rawPhotosApproved) {
+      const hasPhotos = (item.rawPhotos || []).length > 0;
+      add("raw", hasPhotos ? "Raw photos awaiting approval" : "Raw photos awaiting upload", item);
+    }
+    if (s === 7) add("warehouse", "At warehouse, awaiting customer", item);
+    if (item.qcStatus === "fail" && s < 8) add("qcfail", "QC failed", item);
+  }
+  return Object.values(found).map(f => {
+    const labels = [...f.labels];
+    return {
+      type: f.type,
+      label: labels.length === 1 ? labels[0] : "Raw photos pending",
+      count: f.count,
+      who: ATTENTION_TYPES[f.type].who,
+      itemNames: f.itemNames,
+    };
+  });
+}
+
+// Higher = more urgent. Overdue first (most days late first), then orders blocked at a gate,
+// then everything else; within a tier, the nearest delivery date first.
+export function urgencyScore(order, attention, today = startOfToday()) {
+  const late = daysOverdue(order, today);
+  let soonest = null;
+  for (const i of order.items) {
+    if (i.stageIndex >= 8) continue;
+    const d = parseDeliveryDate(i.currentDelivery);
+    if (d && (!soonest || d < soonest)) soonest = d;
+  }
+  const daysUntil = soonest ? Math.round((soonest - today) / DAY_MS) : 999;
+  const nearness = 999 - Math.max(0, Math.min(999, daysUntil));
+  if (late > 0) return 3000000 + Math.min(late, 999) * 1000 + nearness;
+  if (attention.length > 0) return 2000000 + attention.length * 1000 + nearness;
+  return 1000000 + nearness;
+}
