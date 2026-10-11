@@ -3,6 +3,7 @@ import {
   Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder,
   orderStage, stageBucket, getOrderAttention, urgencyScore, daysOverdue,
   formatDeliveryDate, latestDeliveryDate, startOfToday, ATTENTION_TYPES,
+  CountUp,
 } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 
@@ -195,7 +196,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0,1fr))", gap: 10, marginBottom: 6 }}>
+      <div className="dash-stats" style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0,1fr))", gap: 10, marginBottom: 6 }}>
         {stats.map(s => {
           const active = statFilter === s.key || (statFilter === null && s.key === "total");
           const activate = () => toggleStatFilter(s.key === "total" ? null : s.key);
@@ -212,7 +213,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
                 transition: "border-color 0.15s",
               }}>
               <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>{s.label}</div>
-              <div style={{ fontSize: 24, fontWeight: 500, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 24, fontWeight: 500, color: s.color }}><CountUp value={s.value} /></div>
               <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.3 }}>{s.sub}</div>
             </div>
           );
@@ -227,7 +228,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search name, phone, or order ID..."
           style={{ fontSize: 12, padding: "7px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: 260, fontFamily: "inherit" }} />
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="filter-chips" style={{ display: "flex", gap: 4 }}>
           {["All", ...CHANNELS].map(c => (
             <button key={c} onClick={() => setChannelFilter(c)} style={{
               fontSize: 12, padding: "5px 11px", borderRadius: 7,

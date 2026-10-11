@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import * as api from "./api";
 import { formatCurrency } from "./ui";
 
@@ -451,15 +451,33 @@ function DealDetailModal({ deal, onUpdate, onDelete, onClose, onCreateOrder, rol
 }
 
 // ── KANBAN VIEW ───────────────────────────────────────────
-function KanbanView({ deals, onOpen }) {
+// Set to false to turn off drag-and-drop (cards stay clickable; stage can still be
+// changed from the deal window).
+const KANBAN_DRAG = true;
+
+function KanbanView({ deals, onOpen, onMove }) {
+  const [dragId, setDragId] = useState(null);
+  const [overStage, setOverStage] = useState(null);
+  const canDrag = KANBAN_DRAG && !!onMove;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}>
+    <div className="kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}>
       {ACTIVE_STAGES.map(stage => {
         const stageDeals = deals.filter(d => d.stage === stage);
         const sc = STAGE_COLORS[stage];
         const stageValue = stageDeals.reduce((s, d) => s + (d.estimatedValue || 0), 0);
+        const isOver = canDrag && dragId && overStage === stage;
         return (
-          <div key={stage}>
+          <div key={stage}
+            onDragOver={canDrag ? (e => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overStage !== stage) setOverStage(stage); }) : undefined}
+            onDragLeave={canDrag ? (e => { if (!e.currentTarget.contains(e.relatedTarget)) setOverStage(o => (o === stage ? null : o)); }) : undefined}
+            onDrop={canDrag ? (e => {
+              e.preventDefault();
+              const id = dragId || e.dataTransfer.getData("text/plain");
+              setOverStage(null); setDragId(null);
+              const d = deals.find(x => x._id === id);
+              if (d && d.stage !== stage) onMove(d, stage);
+            }) : undefined}
+            style={{ borderRadius: 10, padding: 4, margin: -4, background: isOver ? "var(--color-background-secondary)" : "transparent", outline: isOver ? `1.5px dashed ${sc.fg}` : "1.5px dashed transparent", transition: "background-color 0.15s, outline-color 0.15s", minHeight: 80 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: sc.fg }}>{stage}</span>
@@ -468,16 +486,19 @@ function KanbanView({ deals, onOpen }) {
               {stageValue > 0 && <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{formatCurrency(stageValue)}</span>}
             </div>
             {stageDeals.length === 0
-              ? <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: "var(--color-text-secondary)", border: "0.5px dashed var(--color-border-tertiary)", borderRadius: 10 }}>No deals</div>
+              ? <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: "var(--color-text-secondary)", border: "0.5px dashed var(--color-border-tertiary)", borderRadius: 10 }}>{canDrag && dragId ? "Drop here" : "No deals"}</div>
               : stageDeals.map(deal => {
                   const days = daysSince(deal.lastContacted);
                   return (
                     <div key={deal._id} onClick={() => onOpen(deal)}
-                      style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "12px 14px", cursor: "pointer", marginBottom: 8 }}
+                      draggable={canDrag}
+                      onDragStart={canDrag ? (e => { setDragId(deal._id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", deal._id); }) : undefined}
+                      onDragEnd={canDrag ? (() => { setDragId(null); setOverStage(null); }) : undefined}
+                      style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, padding: "12px 14px", cursor: canDrag ? "grab" : "pointer", marginBottom: 8, opacity: dragId === deal._id ? 0.4 : 1, transition: "opacity 0.15s" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
                       onMouseLeave={e => e.currentTarget.style.background = "var(--color-background-primary)"}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{deal.customerName}</div>
-                      {deal.enquiry && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6, lineHeight: 1.4 }}>{deal.enquiry.slice(0, 55)}{deal.enquiry.length > 55 ? "…" : ""}</div>}
+                      {deal.enquiry && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6, lineHeight: 1.4 }}>{deal.enquiry.slice(0, 55)}{deal.enquiry.length > 55 ? "..." : ""}</div>}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         {deal.estimatedValue ? <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-info)" }}>{formatCurrency(deal.estimatedValue)}</span> : <span />}
                         {days !== null && <span style={{ fontSize: 10, color: days > 7 ? "#791F1F" : days > 3 ? "#633806" : "#27500A", fontWeight: 500 }}>{days === 0 ? "Today" : `${days}d`}</span>}
@@ -526,6 +547,28 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
     setOpenDeal(updated);
   }
 
+  // Drag-and-drop between the four OPEN stages only. Won / Lost are deliberately not
+  // drop targets: they need a lost-reason or the order handoff, which live in the deal
+  // window. The card moves immediately; if the server refuses, it snaps back and says so.
+  const [moveError, setMoveError] = useState(null);
+  const movingIds = useRef(new Set());
+  async function handleMove(deal, stage) {
+    if (movingIds.current.has(deal._id)) return;
+    movingIds.current.add(deal._id);
+    const today = new Date().toISOString().split("T")[0];
+    setMoveError(null);
+    setDeals(prev => prev.map(d => d._id === deal._id ? { ...d, stage, lastContacted: today } : d));
+    try {
+      const updated = await api.updateDeal(deal._id, { stage, lastContacted: today });
+      setDeals(prev => prev.map(d => d._id === updated._id ? updated : d));
+    } catch (err) {
+      setDeals(prev => prev.map(d => d._id === deal._id ? deal : d));
+      setMoveError(`Couldn't move ${deal.customerName} to ${stage}: ${(err && err.message) || "unknown error"}. It has been put back.`);
+    } finally {
+      movingIds.current.delete(deal._id);
+    }
+  }
+
   const salespeople = [...new Set(deals.map(d => d.salesperson))].filter(Boolean).sort();
   const activeDeals = deals.filter(d => ACTIVE_STAGES.includes(d.stage));
   const closedDeals = deals.filter(d => d.stage === "Won" || d.stage === "Lost");
@@ -563,9 +606,9 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="pl-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ fontSize: 20, fontWeight: 500 }}>Sales Pipeline</div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="pl-head-actions" style={{ display: "flex", gap: 8 }}>
           <div style={{ display: "flex", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, overflow: "hidden" }}>
             {[["table", "Table"], ["kanban", "Kanban"], ["closed", "Closed"]].map(([v, l]) => (
               <button key={v} onClick={() => setView(v)} style={{
@@ -618,7 +661,16 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
       {loading ? (
         <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>Loading...</div>
       ) : view === "kanban" ? (
-        <KanbanView deals={filtered} onOpen={setOpenDeal} />
+        <>
+          {moveError && (
+            <div className="banner-in" style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#791F1F", marginBottom: 10, display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span>{moveError}</span>
+              <button onClick={() => setMoveError(null)} style={{ fontSize: 12, border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontFamily: "inherit" }}>Dismiss</button>
+            </div>
+          )}
+          {KANBAN_DRAG && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 10 }}>Drag a card to another column to change its stage. Use the deal window for Won / Lost.</div>}
+          <KanbanView deals={filtered} onOpen={setOpenDeal} onMove={handleMove} />
+        </>
       ) : (
         /* Table view — active or closed */
         <div style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>

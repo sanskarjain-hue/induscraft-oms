@@ -9,6 +9,7 @@ import { VendorsSection, AfterSales, Reports } from "./Sections";
 import PastOrders from "./PastOrders";
 import Settings from "./Settings";
 import Pipeline from "./Pipeline";
+import { ConfirmHost, confirmAsync, PageSkeleton } from "./ui";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-home" },
@@ -25,36 +26,31 @@ const NAV = [
 // To re-release: set this to true (nothing else needs to change).
 const REPORTS_ENABLED = false;
 
-const themeCSS = `
-  :root {
-    --color-background-primary: #ffffff;
-    --color-background-secondary: #f5f5f3;
-    --color-background-tertiary: #eeede8;
-    --color-background-info: #e6f1fb;
-    --color-text-primary: #1a1a1a;
-    --color-text-secondary: #666660;
-    --color-text-info: #0c447c;
-    --color-text-danger: #c0392b;
-    --color-text-warning: #ba7517;
-    --color-text-success: #27500a;
-    --color-border-primary: #aaaaaa;
-    --color-border-secondary: #cccccc;
-    --color-border-tertiary: #e5e5e0;
-    --color-border-danger: #f09595;
-    --border-radius-md: 8px;
-    --border-radius-lg: 12px;
-    --font-sans: 'DM Sans', sans-serif;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'DM Sans', sans-serif; }
-`;
+// "Updated 3 min ago" — re-renders itself every 30s; hidden on phones via CSS.
+function UpdatedAgo({ at }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const t = setInterval(() => tick(n => n + 1), 30000); return () => clearInterval(t); }, []);
+  const mins = Math.floor((Date.now() - at) / 60000);
+  const label = mins < 1 ? "Updated just now" : mins < 60 ? `Updated ${mins} min ago` : `Updated ${Math.floor(mins / 60)}h ago`;
+  return <div className="app-nav-updated" style={{ fontSize: 11, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>{label}</div>;
+}
 
-function LoginScreen({ onLogin }) {
+// Free-tier hosting sleeps when idle. Pinging as soon as the login page opens means the
+// server is usually awake by the time the person has typed their password.
+function LoginScreen({ onLogin, serverSlow }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [waking, setWaking] = useState(false);
+
+  useEffect(() => {
+    let settled = false;
+    const t = setTimeout(() => { if (!settled) setWaking(true); }, 2500);
+    api.wakeServer().finally(() => { settled = true; clearTimeout(t); setWaking(false); });
+    return () => { settled = true; clearTimeout(t); };
+  }, []);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -96,14 +92,20 @@ function LoginScreen({ onLogin }) {
               </button>
             </div>
           </div>
+          {(waking || (loading && serverSlow)) && !error && (
+            <div className="banner-in" role="status" style={{ fontSize: 12, color: "#633806", background: "#FAEEDA", padding: "8px 12px", borderRadius: 8, border: "0.5px solid #E8C98A" }}>
+              <i className="ti ti-clock" style={{ fontSize: 13, marginRight: 5 }} />
+              The server is waking up after a quiet spell — this can take up to a minute. {loading ? "Please keep this page open." : "You can sign in now; it will just take a little longer."}
+            </div>
+          )}
           {error && (
-            <div style={{ fontSize: 12, color: "#C0392B", background: "#FCEBEB", padding: "8px 12px", borderRadius: 8, border: "0.5px solid #f09595" }}>
+            <div className="banner-in" style={{ fontSize: 12, color: "#C0392B", background: "#FCEBEB", padding: "8px 12px", borderRadius: 8, border: "0.5px solid #f09595" }}>
               <i className="ti ti-alert-circle" style={{ fontSize: 13, marginRight: 5 }} />{error}
             </div>
           )}
           <button type="submit" disabled={loading || !username || !password}
             style={{ marginTop: 4, fontSize: 14, fontWeight: 500, padding: "11px 0", borderRadius: 9, border: "none", cursor: loading ? "wait" : "pointer", background: loading || !username || !password ? "#cccccc" : "#C0392B", color: loading || !username || !password ? "#666660" : "#ffffff", fontFamily: "inherit" }}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? (serverSlow ? "Signing in… waking server" : "Signing in...") : "Sign in"}
           </button>
         </form>
       </div>
@@ -129,6 +131,8 @@ export default function App() {
   const [serverSlow, setServerSlow] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [toast, setToast] = useState(null);
+  const [lastLoaded, setLastLoaded] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [allVendors, setAllVendors] = useState([]);
   const [allServiceJobs, setAllServiceJobs] = useState([]);
@@ -152,6 +156,16 @@ export default function App() {
   }
   const queue = queueRef.current;
   const creatingRef = useRef(new Set());
+
+  // ── BACKGROUND REFRESH (see refreshData) ───────────────────
+  // dataVersion is bumped by every local write that touches orders. A refresh that
+  // was fetched before such a write is thrown away rather than applied, so a slow
+  // response can never overwrite something that was just saved or created.
+  const dataVersion = useRef(0);
+  const refreshingRef = useRef(false);
+  const lastRefreshAt = useRef(0);
+  const sessionExpiredRef = useRef(false);
+  sessionExpiredRef.current = sessionExpired;
 
   // "Server is waking up" signal from api.js
   useEffect(() => api.onServerSlow(setServerSlow), []);
@@ -201,6 +215,8 @@ export default function App() {
       setAllVendors(vendors);
       setAllServiceJobs(jobs);
       setAllReplacements(replacements);
+      lastRefreshAt.current = Date.now();
+      setLastLoaded(Date.now());
     } catch (err) {
       if (err && err.auth) setSessionExpired(true);
       else setError("Failed to load data: " + ((err && err.message) || "unknown error") + " Please retry.");
@@ -209,6 +225,74 @@ export default function App() {
       setLoading(false);
     }
   }
+
+  // Set AUTO_REFRESH to false to turn off the refresh-on-return-to-tab behaviour
+  // (the manual refresh button keeps working).
+  const AUTO_REFRESH = true;
+  const AUTO_REFRESH_MIN_GAP_MS = 60000;
+
+  // Quietly re-reads everything from the server. It only applies the result when it is
+  // certain nothing local could be overwritten: no save in flight or held, no order
+  // being created, and no local write since the fetch began. Orders that did not
+  // change keep their exact object identity so open screens are not disturbed.
+  async function refreshData({ manual = false } = {}) {
+    if (refreshingRef.current || !currentUser || sessionExpiredRef.current) return;
+    if (queue.jobs.length > 0 || creatingRef.current.size > 0) return;
+    const startVersion = dataVersion.current;
+    refreshingRef.current = true;
+    lastRefreshAt.current = Date.now();
+    setRefreshing(true);
+    try {
+      const [orders, vendors, jobs, replacements] = await Promise.all([
+        api.fetchAllOrders(), api.fetchVendors(), api.fetchServiceJobs(), api.fetchReplacements(),
+      ]);
+      if (dataVersion.current !== startVersion || queue.jobs.length > 0 || creatingRef.current.size > 0) return; // stale: discard
+      const prev = queue.server;
+      let anyChanged = false;
+      const merged = orders.map(o => {
+        const p = prev.get(o._id);
+        if (p && JSON.stringify(p) === JSON.stringify(o)) return p;
+        anyChanged = true;
+        return o;
+      });
+      const sameSequence = orders.length === queue.sequence.length && orders.every((o, i) => queue.sequence[i] === o._id);
+      if (anyChanged || !sameSequence) queue.setServerOrders(merged);
+      const keepIfSame = next => prevState => (JSON.stringify(prevState) === JSON.stringify(next) ? prevState : next);
+      setAllVendors(keepIfSame(vendors));
+      setAllServiceJobs(keepIfSame(jobs));
+      setAllReplacements(keepIfSame(replacements));
+      setLastLoaded(Date.now());
+      setError(null);
+    } catch (err) {
+      if (err && err.auth) setSessionExpired(true);
+      else if (manual) showToast("Couldn't refresh: " + ((err && err.message) || "unknown error"));
+      // automatic refresh failures stay silent — the data on screen is still valid
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!currentUser || !AUTO_REFRESH) return;
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshAt.current < AUTO_REFRESH_MIN_GAP_MS) return;
+      refreshData();
+    };
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    return () => {
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [currentUser]);
+
+  // Keep the current tab visible in the (sideways-scrolling) nav strip on small screens
+  useEffect(() => {
+    const el = document.querySelector('.app-nav-links button[aria-current="page"]');
+    if (el && el.scrollIntoView) el.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [page, currentUser]);
 
   const role = currentUser?.role || "admin";
 
@@ -234,6 +318,7 @@ export default function App() {
   // an unsaved change waiting on Retry/Discard — the edit is refused (and nothing is
   // silently dropped). `saved` resolves true/false when the save finishes.
   function handleUpdateOrder(arg, forKey) {
+    dataVersion.current++;
     const key = (typeof arg !== "function" && arg && arg._id) || forKey;
     const base = key ? queue.display(key) : undefined;
     if (!base) return { accepted: false, saved: Promise.resolve(false) };
@@ -246,6 +331,7 @@ export default function App() {
   }
 
   async function handleDeleteOrder(orderId) {
+    dataVersion.current++;
     const order = allOrders.find(o => o.id === orderId || o._id === orderId);
     try {
       await api.deleteOrder(order ? order.id : orderId);
@@ -261,6 +347,7 @@ export default function App() {
   // Creating an order either succeeds on the server or throws — it is never added
   // "locally" as a pretend success. The form stays open (with the user's data) on error.
   async function handleNewOrder(newOrder) {
+    dataVersion.current++;
     if (creatingRef.current.has(newOrder.id)) {
       throw new Error("This order is already being created — please wait a moment.");
     }
@@ -290,6 +377,7 @@ export default function App() {
         }
       }
       if (!saved || !saved._id) throw new Error("The server did not confirm the new order. Please try again.");
+      dataVersion.current++;
       queue.upsertServer(saved, { prepend: true });
       navigate("orders", saved._id);
       return saved;
@@ -325,9 +413,13 @@ export default function App() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
     if ((saveStatus.saving > 0 || saveStatus.held > 0) &&
-        !window.confirm("You have changes that have not been saved. They will be lost if you sign out. Sign out anyway?")) {
+        !(await confirmAsync({
+          title: "Sign out with unsaved changes?",
+          message: "You have changes that have not been saved. They will be lost if you sign out.",
+          confirmLabel: "Sign out anyway", danger: true,
+        }))) {
       return;
     }
     api.logout();
@@ -342,23 +434,23 @@ export default function App() {
     setSelectedVendorId(null);
   }
 
+  // First load only: nothing to show yet, so show placeholders instead of an empty table
+  const showSkeleton = loading && allOrders.length === 0 && !error && !selectedOrderId &&
+    (page === "dashboard" || page === "orders" || page === "pastorders");
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", fontFamily: "'DM Sans', sans-serif" }}>
-      <style>{themeCSS}</style>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-
+      <ConfirmHost />
       {!currentUser ? (
-        <LoginScreen onLogin={user => { setCurrentUser(user); }} />
+        <LoginScreen onLogin={user => { setCurrentUser(user); }} serverSlow={serverSlow} />
       ) : (
         <>
-          <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.3px" }}>
+          <nav className="app-nav" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
+            <div className="app-nav-left" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+              <div className="app-nav-brand" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.3px" }}>
                 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>Operations</span> <span style={{ color: "#C0392B", fontWeight: 600 }}>— Induscraft</span>
               </div>
-              <div style={{ display: "flex", gap: 2 }}>
+              <div className="app-nav-links" style={{ display: "flex", gap: 2 }}>
                 {NAV.filter(n => {
                   if (n.id === "reports" && !REPORTS_ENABLED) return false;
                   if (role === "admin") return true;
@@ -367,16 +459,26 @@ export default function App() {
                   if (role === "accountant") return ["dashboard", "orders", "reports", "pastorders"].includes(n.id);
                   return ["dashboard", "orders"].includes(n.id);
                 }).map(n => (
-                  <button key={n.id} onClick={() => navigate(n.id)} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: page === n.id ? "var(--color-background-secondary)" : "transparent", color: page === n.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: page === n.id ? 500 : 400, display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
-                    <i className={`ti ${n.icon}`} style={{ fontSize: 14 }} />{n.label}
+                  <button key={n.id} onClick={() => navigate(n.id)} title={n.label} aria-current={page === n.id ? "page" : undefined} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: page === n.id ? "var(--color-background-secondary)" : "transparent", color: page === n.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: page === n.id ? 500 : 400, display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
+                    <i className={`ti ${n.icon} nav-ico`} style={{ fontSize: 14 }} /><span className="nav-label">{n.label}</span>
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="app-nav-right" style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {loading && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Loading...</div>}
+              {!loading && lastLoaded && <UpdatedAgo at={lastLoaded} />}
+              {!loading && (
+                <button onClick={() => refreshData({ manual: true })}
+                  disabled={refreshing || saveStatus.saving > 0 || saveStatus.held > 0}
+                  title={saveStatus.saving > 0 || saveStatus.held > 0 ? "Finish or discard unsaved changes before refreshing" : "Refresh data"}
+                  aria-label="Refresh data"
+                  style={{ width: 32, height: 32, borderRadius: "50%", border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontFamily: "inherit" }}>
+                  <i className={refreshing ? "ti ti-refresh spin" : "ti ti-refresh"} />
+                </button>
+              )}
 
-              <div style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
+              <div className="app-nav-role" style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
                 <i className="ti ti-shield" style={{ fontSize: 13 }} />{ROLES[role]?.label || "Admin"}
               </div>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-background-info)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "var(--color-text-info)" }}>
@@ -389,7 +491,7 @@ export default function App() {
           </nav>
 
           {error && (
-            <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="banner-in" style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               {error}
               <button onClick={loadAllData} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Retry</button>
             </div>
@@ -400,13 +502,13 @@ export default function App() {
               visible answer. */}
           <div style={{ position: "sticky", top: 52, zIndex: 90 }}>
             {sessionExpired && (
-              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div className="banner-in" style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <span><strong>Your session has expired.</strong> Sign in again to keep working.{(saveStatus.saving > 0 || saveStatus.held > 0) ? " Changes that were not saved will be lost." : ""}</span>
                 <button onClick={handleLogout} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Sign in again</button>
               </div>
             )}
             {saveStatus.held > 0 && (
-              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div className="banner-in" style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "10px 24px", fontSize: 13, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <span>
                   <strong>{saveStatus.held} change{saveStatus.held > 1 ? "s" : ""} NOT saved</strong>
                   {saveStatus.heldOrderIds.length > 0 ? ` on ${saveStatus.heldOrderIds.join(", ")}` : ""}
@@ -415,7 +517,7 @@ export default function App() {
                 </span>
                 <span style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                   <button onClick={() => queue.retryHeld()} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Retry</button>
-                  <button onClick={() => { if (window.confirm("Discard the unsaved change(s)? What you typed will be lost.")) queue.discardHeld(); }} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "transparent", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Discard</button>
+                  <button onClick={async () => { if (await confirmAsync({ title: "Discard unsaved changes?", message: "What you typed will be lost.", confirmLabel: "Discard", danger: true })) queue.discardHeld(); }} style={{ fontSize: 12, padding: "4px 12px", borderRadius: 7, border: "0.5px solid #F09595", background: "transparent", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Discard</button>
                 </span>
               </div>
             )}
@@ -435,19 +537,21 @@ export default function App() {
               </div>
             )}
             {saveStatus.held === 0 && saveStatus.saving === 0 && savedFlash && (
-              <div style={{ background: "#EAF3DE", borderBottom: "0.5px solid #C0DD97", padding: "6px 24px", fontSize: 12, color: "#27500A" }}>
+              <div className="banner-in" style={{ background: "#EAF3DE", borderBottom: "0.5px solid #C0DD97", padding: "6px 24px", fontSize: 12, color: "#27500A" }}>
                 ✓ All changes saved
               </div>
             )}
             {toast && (
-              <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "8px 24px", fontSize: 12, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div className="banner-in" style={{ background: "#FCEBEB", borderBottom: "0.5px solid #F09595", padding: "8px 24px", fontSize: 12, color: "#791F1F", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <span>{toast}</span>
                 <button onClick={() => setToast(null)} style={{ fontSize: 12, padding: "2px 10px", borderRadius: 7, border: "0.5px solid #F09595", background: "white", color: "#791F1F", cursor: "pointer", fontFamily: "inherit" }}>Dismiss</button>
               </div>
             )}
           </div>
 
-          <main style={{ padding: "20px 24px" }}>
+          <main className="app-main" style={{ padding: "20px 24px" }}>
+            {showSkeleton ? <PageSkeleton /> : (
+            <div key={page + (selectedOrderId ? ":detail" : "")} className="page-fade">
             {page === "dashboard" && <Dashboard orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} />}
             {page === "orders" && !selectedOrderId && (
               <OrdersList orders={allOrders} vendors={allVendors} role={role}
@@ -490,6 +594,8 @@ export default function App() {
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={arg => handleUpdateOrder(arg)} />}
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
+            </div>
+            )}
           </main>
         </>
       )}

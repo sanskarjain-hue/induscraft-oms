@@ -1,7 +1,7 @@
 import { useState } from "react";
 import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
-import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill } from "./ui";
+import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill, confirmAsync } from "./ui";
 import { STAGES } from "./data";
 import { useUploads, PendingTiles } from "./useUploads";
 
@@ -14,9 +14,9 @@ function itemKey(item) {
 
 function TabBar({ tabs, active, onSelect }) {
   return (
-    <div style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0" }}>
+    <div className="tabbar" role="tablist" style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", borderRadius: "12px 12px 0 0" }}>
       {tabs.map(t => (
-        <button key={t} onClick={() => onSelect(t)} style={{
+        <button key={t} role="tab" aria-selected={active === t} onClick={() => onSelect(t)} style={{
           fontSize: 13, padding: "10px 16px", cursor: "pointer",
           color: active === t ? "var(--color-text-primary)" : "var(--color-text-secondary)",
           fontWeight: active === t ? 500 : 400,
@@ -201,11 +201,11 @@ function OrderInfoTab({ order, role, onUpdate, currentUser }) {
           {STAGES.map((s, i) => (
             <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-                <div style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : i <= maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
-                <div style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, background: (i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#FAEEDA" : "var(--color-background-primary)", border: `2px solid ${(i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#BA7517" : "var(--color-border-tertiary)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div className="track-seg" style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : i <= maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
+                <div className="track-dot" style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, background: (i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#FAEEDA" : "var(--color-background-primary)", border: `2px solid ${(i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#639922" : i === maxStageIdx && i !== STAGES.length - 1 ? "#BA7517" : "var(--color-border-tertiary)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {(i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) && <i className="ti ti-check" style={{ fontSize: 9, color: "white" }} />}
                 </div>
-                <div style={{ flex: 1, height: 2, background: i === STAGES.length - 1 ? "transparent" : i < maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
+                <div className="track-seg" style={{ flex: 1, height: 2, background: i === STAGES.length - 1 ? "transparent" : i < maxStageIdx ? "#639922" : "var(--color-border-tertiary)" }} />
               </div>
               <div style={{ fontSize: 9, color: (i === maxStageIdx && i !== STAGES.length - 1) ? "#854F0B" : (i === STAGES.length - 1 ? maxStageIdx >= STAGES.length - 1 : i < maxStageIdx) ? "#3B6D11" : "var(--color-text-secondary)", textAlign: "center", marginTop: 5, maxWidth: 58, lineHeight: 1.3, fontWeight: i === maxStageIdx ? 500 : 400 }}>{s}</div>
             </div>
@@ -1007,14 +1007,17 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
               {canEditStage && (
                 <select
                   value={item.stageIndex}
-                  onChange={e => {
-                    if (parseInt(e.target.value, 10) < item.stageIndex) {
-                      if (!window.confirm(`Move this item back to "${STAGES[parseInt(e.target.value, 10)]}"? This will clear photos/notes recorded for any stage after that point (vendor assignment included, if reverting before "Processing started"). Dispatch details are not affected.`)) {
-                        e.target.value = item.stageIndex;
-                        return;
-                      }
+                  onChange={async e => {
+                    const chosen = e.target.value; // read before awaiting: the event is gone by then
+                    if (parseInt(chosen, 10) < item.stageIndex) {
+                      const ok = await confirmAsync({
+                        title: "Move this item back?",
+                        message: `Move this item back to "${STAGES[parseInt(chosen, 10)]}"? This will clear photos/notes recorded for any stage after that point (vendor assignment included, if reverting before "Processing started"). Dispatch details are not affected.`,
+                        confirmLabel: "Move back", danger: true,
+                      });
+                      if (!ok) return; // controlled select snaps back to the real stage on its own
                     }
-                    setItemStage(itemKey(item), e.target.value);
+                    setItemStage(itemKey(item), chosen);
                   }}
                   title="Correct this item's stage — use if it was accidentally advanced or reverted"
                   style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-secondary)", fontFamily: "inherit", cursor: "pointer" }}
@@ -1644,16 +1647,16 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
       <button onClick={onBack} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, marginBottom: 14, padding: 0, fontFamily: "inherit" }}>
         <i className="ti ti-arrow-left" style={{ fontSize: 14 }} /> Back to orders
       </button>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="od-head" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.5px" }}>{order.id}</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 5 }}>
+          <div className="od-meta" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 5 }}>
             <Badge variant={channelColors[order.channel] || "gray"}>{order.channel}</Badge>
             <Badge variant={stageVariant(maxStageIdx)}>{STAGES[maxStageIdx]}</Badge>
             <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Created {order.date} &middot; {order.salesperson}</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="od-actions" style={{ display: "flex", gap: 8 }}>
           <Btn onClick={() => setShowPrint(true)}><i className="ti ti-printer" style={{ fontSize: 13 }} /> Print</Btn>
           <Btn onClick={() => setShowEdit(true)}><i className="ti ti-edit" style={{ fontSize: 13 }} /> Edit</Btn>
           {role === "admin" && <Btn variant="danger" onClick={() => setShowArchiveConfirm(true)}><i className="ti ti-archive" style={{ fontSize: 13 }} /> Archive</Btn>}
