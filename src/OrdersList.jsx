@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder, firstItemImageSrc } from "./ui";
+import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder, firstItemImageSrc, daysOverdue, startOfToday } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 import NewOrderForm from "./NewOrderForm";
 
@@ -14,6 +14,8 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
   }, [prefill]);
 
   const activeOrders = orders.filter(o => o.status !== 'archived' && !isPastOrder(o));
+
+  const today = startOfToday();
 
   const filtered = activeOrders.filter(o => {
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;
@@ -76,17 +78,22 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} style={{ padding: 32, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>No orders found</td></tr>
+              <tr><td colSpan={10} style={{ padding: 32, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>No orders found</td></tr>
             )}
             {filtered.map(o => {
               const displayStageIdx = Math.min(...o.items.map(i => i.stageIndex));
               const ds = delayStatus(o);
+              // Same overdue rule as the Dashboard (ui.jsx daysOverdue): judged on the current
+              // delivery date even if it was rescheduled, so both pages always agree.
+              const late = daysOverdue(o, today);
+              const isOverdue = late > 0;
+              const statusKey = isOverdue ? "overdue" : ds === "delayed" ? "delayed" : "on-track";
               const orderIsNew = isNewOrder(o);
               return (
                 <tr key={o.id} onClick={() => onOrderClick(o.id)}
-                  style={{ cursor: "pointer", background: ds === "overdue" ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent" }}
-                  onMouseEnter={e => e.currentTarget.style.background = ds === "overdue" ? "#f8d7d7" : orderIsNew ? "#e4f5e4" : "var(--color-background-secondary)"}
-                  onMouseLeave={e => e.currentTarget.style.background = ds === "overdue" ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent"}>
+                  style={{ cursor: "pointer", background: isOverdue ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent" }}
+                  onMouseEnter={e => e.currentTarget.style.background = isOverdue ? "#f8d7d7" : orderIsNew ? "#e4f5e4" : "var(--color-background-secondary)"}
+                  onMouseLeave={e => e.currentTarget.style.background = isOverdue ? "#FCEBEB" : orderIsNew ? "#F0FAF0" : "transparent"}>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", width: 48 }}>
                     {orderIsNew && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 5, background: "#27500A", color: "white", fontWeight: 600, letterSpacing: "0.3px" }}>NEW</span>}
                   </td>
@@ -119,7 +126,7 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.salesperson}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}><Badge variant={stageVariant(displayStageIdx)}>{STAGES[displayStageIdx]}</Badge></td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontSize: 12 }}>
-                    <DelayDot status={ds} />{ds === "on-track" ? "On track" : ds === "delayed" ? "Delayed" : "Overdue"}
+                    <DelayDot status={statusKey} />{isOverdue ? `Overdue \u00b7 ${late}d late` : ds === "delayed" ? "Delayed" : "On track"}
                   </td>
                 </tr>
               );
