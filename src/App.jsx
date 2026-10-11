@@ -21,6 +21,10 @@ const NAV = [
   { id: "settings", label: "Settings", icon: "ti-settings" },
 ];
 
+// Reports is temporarily taken down while it is being fixed.
+// To re-release: set this to true (nothing else needs to change).
+const REPORTS_ENABLED = false;
+
 const themeCSS = `
   :root {
     --color-background-primary: #ffffff;
@@ -356,6 +360,7 @@ export default function App() {
               </div>
               <div style={{ display: "flex", gap: 2 }}>
                 {NAV.filter(n => {
+                  if (n.id === "reports" && !REPORTS_ENABLED) return false;
                   if (role === "admin") return true;
                   if (role === "sales") return ["dashboard", "orders", "pipeline", "pastorders"].includes(n.id);
                   if (role === "qc") return ["dashboard", "orders"].includes(n.id);
@@ -472,7 +477,16 @@ export default function App() {
                 orders={allOrders} role={role}
                 onOrderClick={(id) => navigate("orders", id)} />
             )}
-            {page === "reports" && <Reports orders={allOrders} role={role} />}
+            {page === "reports" && (REPORTS_ENABLED
+              ? <Reports orders={allOrders} role={role} />
+              : (
+                <div style={{ maxWidth: 420, margin: "80px auto", textAlign: "center" }}>
+                  <i className="ti ti-tool" style={{ fontSize: 32, color: "var(--color-text-secondary)" }} />
+                  <div style={{ fontSize: 16, fontWeight: 500, color: "var(--color-text-primary)", margin: "12px 0 6px" }}>Reports temporarily unavailable</div>
+                  <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>We're fixing this section and will bring it back soon.</div>
+                  <button onClick={() => navigate("dashboard")} style={{ fontSize: 13, padding: "6px 14px", borderRadius: 8, border: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", cursor: "pointer", fontFamily: "inherit" }}>Back to Dashboard</button>
+                </div>
+              ))}
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={arg => handleUpdateOrder(arg)} />}
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
