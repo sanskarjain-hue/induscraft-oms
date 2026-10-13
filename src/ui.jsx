@@ -1,5 +1,3 @@
-import { useState, useEffect, useRef } from "react";
-
 export function Badge({ children, variant = "gray" }) {
   const styles = {
     blue: { background: "#E6F1FB", color: "#0C447C" },
@@ -140,13 +138,13 @@ export function MiniPipeline({ stageIndex, total = 9 }) {
     <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
       {Array.from({ length: total }).map((_, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", flex: 1 }}>
-          <div className="track-dot" style={{
+          <div style={{
             width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
             background: i < stageIndex ? "#639922" : i === stageIndex ? "#BA7517" : "var(--color-background-secondary)",
             border: `1.5px solid ${i < stageIndex ? "#639922" : i === stageIndex ? "#BA7517" : "var(--color-border-secondary)"}`,
           }} />
           {i < total - 1 && (
-            <div className="track-seg" style={{ flex: 1, height: 2, background: i < stageIndex ? "#639922" : "var(--color-border-tertiary)" }} />
+            <div style={{ flex: 1, height: 2, background: i < stageIndex ? "#639922" : "var(--color-border-tertiary)" }} />
           )}
         </div>
       ))}
@@ -393,113 +391,4 @@ export function urgencyScore(order, attention, today = startOfToday()) {
   if (late > 0) return 3000000 + Math.min(late, 999) * 1000 + nearness;
   if (attention.length > 0) return 2000000 + attention.length * 1000 + nearness;
   return 1000000 + nearness;
-}
-
-
-// ── SKELETON LOADERS ──────────────────────────────────────
-export function Skeleton({ width = "100%", height = 14, radius = 6, style = {} }) {
-  return <div className="skeleton" aria-hidden="true" style={{ width, height, borderRadius: radius, ...style }} />;
-}
-
-// Shown in place of the Dashboard/Orders pages only while the very first load is
-// in flight and there is nothing to show yet.
-export function PageSkeleton() {
-  return (
-    <div role="status" aria-label="Loading" aria-busy="true">
-      <Skeleton width={160} height={24} style={{ marginBottom: 18 }} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0,1fr))", gap: 10, marginBottom: 20 }} className="dash-stats">
-        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={78} radius={10} />)}
-      </div>
-      <Skeleton width={260} height={32} radius={8} style={{ marginBottom: 14 }} />
-      {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} height={44} radius={8} style={{ marginBottom: 8 }} />)}
-    </div>
-  );
-}
-
-// ── COUNT-UP NUMBER ───────────────────────────────────────
-// Animates whole numbers once per browser session (first time a non-zero value is
-// shown). Always lands on exactly `value`; anything that is not a whole number is
-// shown as-is; honours prefers-reduced-motion.
-let countUpPlayed = false;
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-export function CountUp({ value, duration = 600 }) {
-  const isInt = typeof value === "number" && Number.isInteger(value);
-  const [shown, setShown] = useState(() => (isInt && value > 0 && !countUpPlayed && !prefersReducedMotion() ? 0 : value));
-  const raf = useRef(0);
-  useEffect(() => {
-    if (!isInt) { setShown(value); return; }
-    if (countUpPlayed || value === 0 || prefersReducedMotion()) {
-      setShown(value);
-      if (value > 0) countUpPlayed = true;
-      return;
-    }
-    countUpPlayed = true;
-    const start = performance.now();
-    const tick = now => {
-      const t = Math.min(1, (now - start) / duration);
-      setShown(t >= 1 ? value : Math.round(value * (1 - Math.pow(1 - t, 3))));
-      if (t < 1) raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf.current); setShown(value); };
-  }, [value]);
-  return <>{shown}</>;
-}
-
-// ── CONFIRM DIALOG (replaces window.confirm) ──────────────
-// `confirmAsync(opts)` resolves true/false. If the host is not mounted for any
-// reason it falls back to the native window.confirm, so a confirmation can never
-// be silently skipped.
-let confirmImpl = null;
-export function confirmAsync(opts) {
-  const o = typeof opts === "string" ? { message: opts } : opts;
-  if (!confirmImpl) return Promise.resolve(window.confirm(o.message));
-  return confirmImpl(o);
-}
-
-export function ConfirmHost() {
-  const [req, setReq] = useState(null);
-  const reqRef = useRef(null);
-  const cancelRef = useRef(null);
-
-  useEffect(() => {
-    confirmImpl = o => new Promise(resolve => {
-      if (reqRef.current) reqRef.current.resolve(false); // never leave an earlier prompt hanging
-      const next = { ...o, resolve };
-      reqRef.current = next;
-      setReq(next);
-    });
-    return () => { confirmImpl = null; };
-  }, []);
-
-  function close(answer) {
-    const cur = reqRef.current;
-    reqRef.current = null;
-    setReq(null);
-    if (cur) cur.resolve(answer);
-  }
-
-  useEffect(() => {
-    if (!req) return;
-    if (cancelRef.current) cancelRef.current.focus(); // safe default: Cancel
-    const onKey = e => { if (e.key === "Escape") close(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [req]);
-
-  if (!req) return null;
-  return (
-    <div className="cm-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(false); }}>
-      <div className="cm-card" role="alertdialog" aria-modal="true" aria-labelledby="cm-title" aria-describedby="cm-msg">
-        <div className="cm-title" id="cm-title">{req.title || "Are you sure?"}</div>
-        <div className="cm-msg" id="cm-msg">{req.message}</div>
-        <div className="cm-actions">
-          <button ref={cancelRef} className="cm-btn" onClick={() => close(false)}>{req.cancelLabel || "Cancel"}</button>
-          <button className={`cm-btn ${req.danger ? "danger" : "primary"}`} onClick={() => close(true)}>{req.confirmLabel || "Confirm"}</button>
-        </div>
-      </div>
-    </div>
-  );
 }

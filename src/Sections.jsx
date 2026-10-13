@@ -187,7 +187,7 @@ export function VendorsSection({ vendors, orders, selectedVendorId, onVendorSele
         </div>
       )}
 
-      <div className="filter-chips" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search vendors..."
           style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", flex: 1, fontFamily: "inherit" }} />
         {["All", "Good", "Average", "Poor"].map(p => (
@@ -564,7 +564,7 @@ export function AfterSales({ serviceJobs: initialJobs, replacements: initialRepl
             <StatCard label="In progress" value={inProg} valueColor="var(--color-text-info)" />
             <StatCard label="Resolved this month" value={resolved} valueColor="#27500A" />
           </div>
-          <div className="filter-chips" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by customer or order ID..."
               style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", flex: 1, fontFamily: "inherit" }} />
             {["All", "Open", "In progress", "Resolved"].map(s => (

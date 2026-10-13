@@ -684,7 +684,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
         </div>
 
         {/* Body */}
-        <div key={step} className="step-fade" style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
 
           {/* STEP 1 — Channel & basics */}
           {step === 1 && (

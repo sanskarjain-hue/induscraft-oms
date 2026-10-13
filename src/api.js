@@ -134,20 +134,6 @@ async function apiFetch(path, options = {}, { timeoutMs = 90000, isFormData = fa
   }
 }
 
-// ── SERVER WAKE-UP PING ───────────────────────────────────
-// Fire-and-forget request to the health route so a sleeping server starts booting while
-// the person is still typing their password. "no-cors" on purpose: we only care that the
-// request reaches the server (and that it eventually answers), never about the body, so
-// this works regardless of the backend's CORS list. Always resolves, never throws.
-export function wakeServer() {
-  const root = BASE_URL.replace(/\/api$/, "") + "/";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90000);
-  return fetch(root, { mode: "no-cors", cache: "no-store", signal: controller.signal })
-    .then(() => true, () => false)
-    .finally(() => clearTimeout(timer));
-}
-
 // ── USER MANAGEMENT ───────────────────────────────────────
 export async function fetchUsers() {
   return apiFetch("/auth/users");
