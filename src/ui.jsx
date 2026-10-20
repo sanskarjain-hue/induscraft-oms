@@ -23,6 +23,96 @@ export function channelVariant(channel) {
   return { Bangalore: "blue", Pune: "gray", Jodhpur: "teal", Website: "blue", Wholesale: "purple" }[channel] || "gray";
 }
 
+// ── CHANNEL DISPLAY LABEL ──────────────────────────────────
+// The "Wholesale" channel is shown to users as "B2B". The underlying value is
+// unchanged everywhere else — DB enum, order ID prefix ("WS-"), filtering,
+// channelVariant — only what's displayed changes. Use this (not `channel`
+// directly) anywhere channel text is shown to a user.
+export function channelLabel(channel) {
+  return channel === "Wholesale" ? "B2B" : channel;
+}
+
+// ── B2B TAGS ───────────────────────────────────────────────
+// Wholesale/B2B orders can carry one optional tag (which marketplace/partner the
+// order came through). These three are always offered; any tag already used on
+// an order is added too, case-insensitively de-duplicated (first-seen casing
+// wins) so a tag created once stays selectable without a separate tag registry.
+export const DEFAULT_B2B_TAGS = ["Bonito Design", "Homecentre", "Home Town"];
+
+export function collectB2BTags(orders) {
+  const seen = new Map(DEFAULT_B2B_TAGS.map(t => [t.toLowerCase(), t]));
+  for (const o of orders || []) {
+    if (o.channel !== "Wholesale") continue;
+    const t = o.tag && o.tag.trim();
+    if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  }
+  return [...seen.values()];
+}
+
+// Finds the canonical spelling of `value` among `tags`, ignoring case and
+// surrounding whitespace. Returns "" when there is no match.
+export function matchTag(value, tags) {
+  const v = (value || "").trim().toLowerCase();
+  if (!v) return "";
+  return tags.find(t => t.toLowerCase() === v) || "";
+}
+
+// Normalises a tag at WRITE time: if what the user typed is just a different
+// casing of a tag that already exists ("homecentre" vs "Homecentre"), store the
+// existing spelling so the same partner doesn't accumulate variants. A genuinely
+// new tag is stored exactly as typed (trimmed). Existing orders are never
+// rewritten — TagSelect matches them case-insensitively instead, so old data
+// displays correctly without a migration.
+export function canonicalTag(value, orders) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  return matchTag(trimmed, collectB2BTags(orders)) || trimmed;
+}
+
+// Dropdown of existing B2B tags plus a "+ Add new tag" option that switches to a
+// text input. `style` lets each caller match its own form's input styling.
+export function TagSelect({ value, onChange, orders, style = {} }) {
+  // forceCustom covers the moment right after clicking "+ Add new tag" (value is
+  // still "" at that point, so it wouldn't otherwise trigger custom mode). Once a
+  // custom tag has actually been typed, showCustomInput derives from `value` itself
+  // (truthy and not a known tag) rather than this flag — so if this field unmounts
+  // and remounts (e.g. the parent form moves to another step and back), a tag the
+  // user already typed still displays as typed instead of silently reverting to
+  // "No tag" just because local state didn't survive the remount.
+  const [forceCustom, setForceCustom] = useState(false);
+  const tags = collectB2BTags(orders);
+  // Match case-insensitively so an order saved as "homecentre" still shows
+  // "Homecentre" selected in the dropdown rather than dropping into custom-input
+  // mode. The stored value is left as-is; only the display resolves.
+  const matched = matchTag(value, tags);
+  const showCustomInput = forceCustom || (!!value && !matched);
+
+  if (showCustomInput) {
+    return (
+      <div style={{ display: "flex", gap: 8 }}>
+        <input autoFocus value={value} onChange={e => onChange(e.target.value)}
+          placeholder="New tag name" style={{ ...style, flex: 1 }} />
+        <button type="button" onClick={() => { setForceCustom(false); onChange(""); }} style={{
+          fontSize: 12, padding: "0 12px", borderRadius: 8, whiteSpace: "nowrap",
+          border: "0.5px solid var(--color-border-secondary)", background: "transparent",
+          color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit",
+        }}>Choose existing</button>
+      </div>
+    );
+  }
+
+  return (
+    <select value={matched} onChange={e => {
+      if (e.target.value === "__new__") setForceCustom(true);
+      else onChange(e.target.value);
+    }} style={style}>
+      <option value="">No tag</option>
+      {tags.map(t => <option key={t} value={t}>{t}</option>)}
+      <option value="__new__">+ Add new tag…</option>
+    </select>
+  );
+}
+
 export function stageVariant(stageIndex) {
   if (stageIndex >= 8) return "green";
   if (stageIndex >= 5) return "teal";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, channelVariant, stageVariant, formatCurrency, isPastOrder } from "./ui";
+import { Badge, channelVariant, stageVariant, formatCurrency, isPastOrder, channelLabel } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 
 export default function PastOrders({ orders, role, onOrderClick, onUpdate }) {
@@ -35,7 +35,7 @@ export default function PastOrders({ orders, role, onOrderClick, onUpdate }) {
             background: channelFilter === c ? "var(--color-background-secondary)" : "transparent",
             color: channelFilter === c ? "var(--color-text-primary)" : "var(--color-text-secondary)",
             fontWeight: channelFilter === c ? 500 : 400, cursor: "pointer", fontFamily: "inherit"
-          }}>{c}</button>
+          }}>{channelLabel(c)}</button>
         ))}
       </div>
 
@@ -62,7 +62,10 @@ export default function PastOrders({ orders, role, onOrderClick, onUpdate }) {
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500, color: "var(--color-text-info)" }}>{o.id}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.date}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>{o.customer.name}</td>
-                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}><Badge variant={channelVariant(o.channel)}>{o.channel}</Badge></td>
+                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                    <Badge variant={channelVariant(o.channel)}>{channelLabel(o.channel)}</Badge>
+                    {o.tag && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--color-text-secondary)" }}>{o.tag}</span>}
+                  </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{formatCurrency(o.value)}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.salesperson}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>

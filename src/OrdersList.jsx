@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
-import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder, firstItemImageSrc, daysOverdue, startOfToday } from "./ui";
+import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder, firstItemImageSrc, daysOverdue, startOfToday, channelLabel, collectB2BTags } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 import NewOrderForm from "./NewOrderForm";
 
 export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder, prefill, onPrefillUsed, currentUser }) {
   const [channelFilter, setChannelFilter] = useState("All");
+  // "All" | "__untagged__" | a tag name. Only meaningful for B2B orders, so the
+  // control is hidden (and reset) whenever a non-B2B channel is selected.
+  const [tagFilter, setTagFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
 
@@ -17,9 +20,30 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
 
   const today = startOfToday();
 
+  // The tag control only applies to B2B orders, so it's shown for "All" and B2B only.
+  const showTagFilter = channelFilter === "All" || channelFilter === "Wholesale";
+  const tagOptions = collectB2BTags(orders);
+
   const filtered = activeOrders.filter(o => {
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;
-    if (search && !o.customer.name.toLowerCase().includes(search.toLowerCase()) && !o.id.toLowerCase().includes(search.toLowerCase())) return false;
+    if (showTagFilter && tagFilter !== "All") {
+      // Filtering by tag implicitly narrows to B2B — no other channel carries one.
+      if (o.channel !== "Wholesale") return false;
+      const t = (o.tag || "").trim();
+      if (tagFilter === "__untagged__") {
+        if (t) return false;
+      } else if (t.toLowerCase() !== tagFilter.toLowerCase()) {
+        // Case-insensitive so an order saved as "homecentre" still matches "Homecentre".
+        return false;
+      }
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      const hit = o.customer.name.toLowerCase().includes(q)
+        || o.id.toLowerCase().includes(q)
+        || (o.tag || "").toLowerCase().includes(q);
+      if (!hit) return false;
+    }
     return true;
   });
 
@@ -54,17 +78,36 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by customer or order ID..."
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by customer, order ID or tag..."
           style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: 240, fontFamily: "inherit" }} />
         {["All", ...CHANNELS].map(c => (
-          <button key={c} onClick={() => setChannelFilter(c)} style={{
+          <button key={c} onClick={() => {
+            setChannelFilter(c);
+            // A tag filter makes no sense outside B2B — clear it so the list can't
+            // be left silently filtered by a control that is no longer visible.
+            if (c !== "All" && c !== "Wholesale") setTagFilter("All");
+          }} style={{
             fontSize: 12, padding: "5px 11px", borderRadius: 7,
             border: "0.5px solid var(--color-border-secondary)",
             background: channelFilter === c ? "var(--color-background-secondary)" : "transparent",
             color: channelFilter === c ? "var(--color-text-primary)" : "var(--color-text-secondary)",
             fontWeight: channelFilter === c ? 500 : 400, cursor: "pointer", fontFamily: "inherit"
-          }}>{c}</button>
+          }}>{channelLabel(c)}</button>
         ))}
+        {showTagFilter && (
+          <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} aria-label="Filter by B2B tag"
+            style={{
+              fontSize: 12, padding: "5px 10px", borderRadius: 7,
+              border: "0.5px solid var(--color-border-secondary)",
+              background: tagFilter === "All" ? "transparent" : "var(--color-background-secondary)",
+              color: tagFilter === "All" ? "var(--color-text-secondary)" : "var(--color-text-primary)",
+              fontWeight: tagFilter === "All" ? 400 : 500, cursor: "pointer", fontFamily: "inherit",
+            }}>
+            <option value="All">All tags</option>
+            {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="__untagged__">Untagged (B2B)</option>
+          </select>
+        )}
       </div>
 
       <div style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>
@@ -121,7 +164,10 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
                       )}
                     </div>
                   </td>
-                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}><Badge variant={channelVariant(o.channel)}>{o.channel}</Badge></td>
+                  <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                    <Badge variant={channelVariant(o.channel)}>{channelLabel(o.channel)}</Badge>
+                    {o.tag && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--color-text-secondary)" }}>{o.tag}</span>}
+                  </td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", fontWeight: 500 }}>{formatCurrency(o.value)}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}>{o.salesperson}</td>
                   <td style={{ padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}><Badge variant={stageVariant(displayStageIdx)}>{STAGES[displayStageIdx]}</Badge></td>

@@ -583,7 +583,7 @@ export default function App() {
                 onNewOrder={handleNewOrder} prefill={prefillOrder} onPrefillUsed={() => setPrefillOrder(null)} currentUser={currentUser} />
             )}
             {page === "orders" && selectedOrderId && selectedOrder && (
-              <OrderDetail order={selectedOrder} role={role} vendors={allVendors}
+              <OrderDetail order={selectedOrder} role={role} vendors={allVendors} orders={allOrders}
                 onBack={() => setSelectedOrderId(null)}
                 onUpdate={arg => handleUpdateOrder(arg, selectedOrder._id)}
                 onDelete={handleDeleteOrder}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
-import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill, confirmAsync } from "./ui";
+import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill, confirmAsync, channelLabel, TagSelect, canonicalTag } from "./ui";
 import { STAGES } from "./data";
 import { useUploads, PendingTiles } from "./useUploads";
 
@@ -1470,10 +1470,11 @@ function PaymentsTab({ order, role, onUpdate }) {
 }
 
 // ── EDIT ORDER MODAL ──────────────────────────────────────
-function EditOrderModal({ order, onSave, onClose }) {
+function EditOrderModal({ order, orders, onSave, onClose }) {
   const [form, setForm] = useState({
     orderId: order.id || "",
     channel: order.channel || "",
+    tag: order.tag || "",
     salesperson: order.salesperson || "",
     date: order.date || "",
     value: order.value || "",
@@ -1488,6 +1489,7 @@ function EditOrderModal({ order, onSave, onClose }) {
       ...order,
       id: form.orderId.trim() || order.id,
       channel: form.channel,
+      tag: form.channel === "Wholesale" ? canonicalTag(form.tag, orders) : "",
       salesperson: form.salesperson,
       date: form.date,
       value: parseFloat(form.value) || order.value,
@@ -1517,10 +1519,16 @@ function EditOrderModal({ order, onSave, onClose }) {
             <div>
               <label style={LABEL}>Channel</label>
               <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))} style={INPUT}>
-                {["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"].map(c => <option key={c}>{c}</option>)}
+                {["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"].map(c => <option key={c} value={c}>{channelLabel(c)}</option>)}
               </select>
             </div>
           </div>
+          {form.channel === "Wholesale" && (
+            <div>
+              <label style={LABEL}>Tag</label>
+              <TagSelect value={form.tag} onChange={t => setForm(f => ({ ...f, tag: t }))} orders={orders} style={INPUT} />
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={LABEL}>Order date</label>
@@ -1622,7 +1630,7 @@ function DeleteOrderModal({ order, onConfirm, onClose }) {
   );
 }
 
-export default function OrderDetail({ order, role, vendors, onBack, onUpdate, onDelete, onVendorClick, currentUser, onVendorCreated }) {
+export default function OrderDetail({ order, role, vendors, orders, onBack, onUpdate, onDelete, onVendorClick, currentUser, onVendorCreated }) {
   const [tab, setTab] = useState("Order info");
   const [showPrint, setShowPrint] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -1651,7 +1659,8 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
         <div>
           <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.5px" }}>{order.id}</div>
           <div className="od-meta" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 5 }}>
-            <Badge variant={channelColors[order.channel] || "gray"}>{order.channel}</Badge>
+            <Badge variant={channelColors[order.channel] || "gray"}>{channelLabel(order.channel)}</Badge>
+            {order.tag && <Badge variant="gray">{order.tag}</Badge>}
             <Badge variant={stageVariant(maxStageIdx)}>{STAGES[maxStageIdx]}</Badge>
             <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Created {order.date} &middot; {order.salesperson}</span>
           </div>
@@ -1664,7 +1673,7 @@ export default function OrderDetail({ order, role, vendors, onBack, onUpdate, on
         </div>
       </div>
       {showPrint && <PrintView order={order} vendors={vendors} onClose={() => setShowPrint(false)} />}
-      {showEdit && <EditOrderModal order={order} onSave={updated => { onUpdate(updated); setShowEdit(false); }} onClose={() => setShowEdit(false)} />}
+      {showEdit && <EditOrderModal order={order} orders={orders} onSave={updated => { onUpdate(updated); setShowEdit(false); }} onClose={() => setShowEdit(false)} />}
       {showArchiveConfirm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "var(--color-background-primary)", borderRadius: 14, padding: 28, width: 380, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>

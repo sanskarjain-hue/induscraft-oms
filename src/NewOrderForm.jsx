@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { CHANNELS, STAGES } from "./data";
 import { fetchNextOrderId, lookupCustomer, uploadFile, fetchUsers } from "./api";
-import { formatCurrency } from "./ui";
+import { formatCurrency, channelLabel, TagSelect, canonicalTag } from "./ui";
 
 const CHANNEL_PREFIXES = {
   Bangalore: "BL", Pune: "PU", Jodhpur: "JD", Website: "WB", Wholesale: "WS"
@@ -320,6 +320,9 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const [customOrderId, setCustomOrderId] = useState("");
   const [salesperson, setSalesperson] = useState(prefill?.salesperson || currentUser?.name || "");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  // B2B-only: which marketplace/partner the order came through. Cleared whenever
+  // the channel changes away from Wholesale (see handleChannelChange).
+  const [tag, setTag] = useState(prefill?.tag || "");
 
   // Step 2 — Customer
   const [custName, setCustName] = useState(prefill?.custName || "");
@@ -373,15 +376,15 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
   const saveDraft = useCallback(() => {
     try {
       const draftItems = items.map(it => ({ ...it, images: cleanFiles(it.images), measurementPhotos: cleanFiles(it.measurementPhotos) }));
-      const draft = { step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items: draftItems, notes, originalDelivery };
+      const draft = { step, channel, customOrderId, salesperson, date, tag, custName, custPhone, custAddress, items: draftItems, notes, originalDelivery };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch {}
-  }, [step, channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery]);
+  }, [step, channel, customOrderId, salesperson, date, tag, custName, custPhone, custAddress, items, notes, originalDelivery]);
 
   useEffect(() => {
     // Only auto-save if the form has been started (channel selected)
     if (channel) saveDraft();
-  }, [channel, customOrderId, salesperson, date, custName, custPhone, custAddress, items, notes, originalDelivery]);
+  }, [channel, customOrderId, salesperson, date, tag, custName, custPhone, custAddress, items, notes, originalDelivery]);
 
   function restoreDraft() {
     try {
@@ -393,6 +396,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       if (d.customOrderId) setCustomOrderId(d.customOrderId);
       if (d.salesperson) setSalesperson(d.salesperson);
       if (d.date) setDate(d.date);
+      if (d.tag) setTag(d.tag);
       if (d.custName) setCustName(d.custName);
       if (d.custPhone) setCustPhone(d.custPhone);
       if (d.custAddress) setCustAddress(d.custAddress);
@@ -418,6 +422,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
 
   async function handleChannelChange(c) {
     setChannel(c);
+    if (c !== "Wholesale") setTag("");
     try {
       const { id } = await fetchNextOrderId(c);
       setCustomOrderId(id);
@@ -569,6 +574,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
     const newOrder = {
       id: orderId,
       channel,
+      tag: canonicalTag(tag, existingOrders),
       date,
       salesperson,
       customer: { name: custName, phone: custPhone, address: custAddress },
@@ -698,11 +704,18 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       background: channel === c ? "#FCEBEB" : "#f5f5f3",
                       color: channel === c ? "#C0392B" : "#666660",
                       fontWeight: channel === c ? 600 : 400, fontFamily: "inherit",
-                    }}>{c}</button>
+                    }}>{channelLabel(c)}</button>
                   ))}
                 </div>
                 {errors.channel && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{errors.channel}</div>}
               </Field>
+
+              {channel === "Wholesale" && (
+                <Field label="Tag (optional)">
+                  <TagSelect value={tag} onChange={setTag} orders={existingOrders}
+                    style={{ ...INPUT, background: "#f5f5f3", color: "#1a1a1a" }} />
+                </Field>
+              )}
 
               <Field label="Salesperson *">
                 <select value={salesperson} onChange={e => setSalesperson(e.target.value)}
@@ -921,7 +934,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
               <div style={{ background: "#f5f5f3", borderRadius: 10, padding: "14px 16px" }}>
                 <div style={{ fontSize: 12, fontWeight: 500, color: "#1a1a1a", marginBottom: 10 }}>Order summary</div>
                 {[
-                  ["Channel", channel],
+                  ["Channel", channelLabel(channel)],
+                  ...(channel === "Wholesale" && tag ? [["Tag", tag]] : []),
                   ["Customer", custName],
                   ["Phone", custPhone],
                   ["Salesperson", salesperson],

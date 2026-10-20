@@ -3,7 +3,7 @@ import {
   Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder,
   orderStage, stageBucket, getOrderAttention, urgencyScore, daysOverdue,
   formatDeliveryDate, latestDeliveryDate, startOfToday, ATTENTION_TYPES,
-  CountUp,
+  CountUp, channelLabel, collectB2BTags,
 } from "./ui";
 import { STAGES, CHANNELS } from "./data";
 
@@ -11,6 +11,9 @@ const ATTENTION_ORDER = ["vendor", "raw", "warehouse", "qcfail"];
 
 export default function Dashboard({ orders, role, onOrderClick }) {
   const [channelFilter, setChannelFilter] = useState("All");
+  // "All" | "__untagged__" | a tag name. Only meaningful for B2B orders — see
+  // showTagFilter below, same convention as OrdersList.
+  const [tagFilter, setTagFilter] = useState("All");
   const [stageFilter, setStageFilter] = useState("All");
   const [statFilter, setStatFilter] = useState(null);
   const [attentionFilter, setAttentionFilter] = useState(null);
@@ -69,10 +72,25 @@ export default function Dashboard({ orders, role, onOrderClick }) {
   ];
   const nothingNeedsAttention = attentionChips.every(c => c.count === 0);
 
+  // The tag control only applies to B2B orders, so it's shown for "All" and B2B only.
+  const showTagFilter = channelFilter === "All" || channelFilter === "Wholesale";
+  const tagOptions = collectB2BTags(activeOrders);
+
   // Filter
   const filtered = activeOrders.filter(o => {
     const m = meta.get(o.id);
     if (channelFilter !== "All" && o.channel !== channelFilter) return false;
+    if (showTagFilter && tagFilter !== "All") {
+      // Filtering by tag implicitly narrows to B2B — no other channel carries one.
+      if (o.channel !== "Wholesale") return false;
+      const t = (o.tag || "").trim();
+      if (tagFilter === "__untagged__") {
+        if (t) return false;
+      } else if (t.toLowerCase() !== tagFilter.toLowerCase()) {
+        // Case-insensitive so an order saved as "homecentre" still matches "Homecentre".
+        return false;
+      }
+    }
     if (stageFilter !== "All" && STAGES[m.stage] !== stageFilter) return false;
     if (search) {
       const q = search.trim().toLowerCase();
@@ -82,7 +100,8 @@ export default function Dashboard({ orders, role, onOrderClick }) {
       // Only compare phone numbers when the query actually contains digits — otherwise
       // includes("") is always true and every order would match a name search.
       const matchesPhone = qDigits.length > 0 && (o.customer.phone || "").replace(/\D/g, "").includes(qDigits);
-      if (!matchesName && !matchesId && !matchesPhone) return false;
+      const matchesTag = (o.tag || "").toLowerCase().includes(q);
+      if (!matchesName && !matchesId && !matchesPhone && !matchesTag) return false;
     }
     if (statFilter && statFilter !== "total") {
       if (statFilter === "overdue") { if (!m.overdue) return false; }
@@ -125,13 +144,14 @@ export default function Dashboard({ orders, role, onOrderClick }) {
   }
 
   function clearAllFilters() {
-    setStatFilter(null); setAttentionFilter(null); setChannelFilter("All"); setStageFilter("All"); setSearch("");
+    setStatFilter(null); setAttentionFilter(null); setChannelFilter("All"); setTagFilter("All"); setStageFilter("All"); setSearch("");
   }
 
   const activeFilters = [];
   if (statFilter) activeFilters.push({ key: "stat", label: stats.find(s => s.key === statFilter)?.label, clear: () => setStatFilter(null) });
   if (attentionFilter) activeFilters.push({ key: "att", label: `Needs attention: ${ATTENTION_TYPES[attentionFilter].chip}`, clear: () => setAttentionFilter(null) });
-  if (channelFilter !== "All") activeFilters.push({ key: "ch", label: `Channel: ${channelFilter}`, clear: () => setChannelFilter("All") });
+  if (channelFilter !== "All") activeFilters.push({ key: "ch", label: `Channel: ${channelLabel(channelFilter)}`, clear: () => setChannelFilter("All") });
+  if (showTagFilter && tagFilter !== "All") activeFilters.push({ key: "tag", label: `Tag: ${tagFilter === "__untagged__" ? "Untagged" : tagFilter}`, clear: () => setTagFilter("All") });
   if (stageFilter !== "All") activeFilters.push({ key: "st", label: `Stage: ${stageFilter}`, clear: () => setStageFilter("All") });
   if (search) activeFilters.push({ key: "q", label: `Search: "${search}"`, clear: () => setSearch("") });
 
@@ -226,19 +246,32 @@ export default function Dashboard({ orders, role, onOrderClick }) {
       {/* Filters */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search name, phone, or order ID..."
+          placeholder="Search name, phone, order ID, or tag..."
           style={{ fontSize: 12, padding: "7px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: 260, fontFamily: "inherit" }} />
         <div className="filter-chips" style={{ display: "flex", gap: 4 }}>
           {["All", ...CHANNELS].map(c => (
-            <button key={c} onClick={() => setChannelFilter(c)} style={{
+            <button key={c} onClick={() => {
+              setChannelFilter(c);
+              // A tag filter makes no sense outside B2B — clear it so the table can't
+              // be left silently filtered by a control that is no longer visible.
+              if (c !== "All" && c !== "Wholesale") setTagFilter("All");
+            }} style={{
               fontSize: 12, padding: "5px 11px", borderRadius: 7,
               border: "0.5px solid var(--color-border-secondary)",
               background: channelFilter === c ? "var(--color-background-primary)" : "transparent",
               color: channelFilter === c ? "var(--color-text-primary)" : "var(--color-text-secondary)",
               fontWeight: channelFilter === c ? 500 : 400, cursor: "pointer", fontFamily: "inherit",
-            }}>{c}</button>
+            }}>{channelLabel(c)}</button>
           ))}
         </div>
+        {showTagFilter && (
+          <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} aria-label="Filter by B2B tag"
+            style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontFamily: "inherit" }}>
+            <option value="All">All tags</option>
+            {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="__untagged__">Untagged (B2B)</option>
+          </select>
+        )}
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
           aria-label="Filter by stage"
           style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontFamily: "inherit" }}>
@@ -311,7 +344,8 @@ export default function Dashboard({ orders, role, onOrderClick }) {
                     {o.customer.phone && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{o.customer.phone}</div>}
                   </td>
                   <td style={cell}>
-                    <Badge variant={channelVariant(o.channel)}>{o.channel}</Badge>
+                    <Badge variant={channelVariant(o.channel)}>{channelLabel(o.channel)}</Badge>
+                    {o.tag && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--color-text-secondary)" }}>{o.tag}</span>}
                   </td>
                   <td style={{ ...cell, fontWeight: 500 }}>{formatCurrency(o.value)}</td>
                   <td style={cell}>
