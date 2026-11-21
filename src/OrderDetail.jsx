@@ -557,6 +557,125 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   );
 }
 
+// ── LINE ITEM PRICE EDITOR ────────────────────────────────
+// `item.price` is stored as the LINE TOTAL (unit price × qty — see NewOrderForm), so the
+// editor takes a UNIT price and writes unit × qty back. Saving:
+//   • re-sums every line price into order.value (replaces any hand-typed order value),
+//   • resets costApproved so admin re-approves the margin on the new value,
+//   • refuses a total below the advance already received,
+//   • logs "Price: <item> ₹old → ₹new · order total ₹a → ₹b" in the edit history
+//     (changedBy / changedAt are added by the server).
+const inr = n => `₹${Math.round(Number(n) || 0).toLocaleString("en-IN")}`;
+const round2 = n => Math.round(n * 100) / 100;
+const sumLines = items => items.reduce((s, i) => s + (Number(i.price) || 0), 0);
+
+function ItemPriceEditor({ order, item, canEdit, onUpdate }) {
+  const qty = parseInt(item.qty) || 1;
+  const lineNow = Number(item.price) || 0;
+  const unitNow = round2(lineNow / qty);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+
+  const draftNum = parseFloat(draft);
+  const draftValid = Number.isFinite(draftNum) && draftNum >= 0;
+  const newLine = draftValid ? round2(draftNum * qty) : null;
+  const itemsSum = sumLines(order.items);
+  const valueDiffers = Math.round(Number(order.value) || 0) !== Math.round(itemsSum);
+
+  function start() {
+    setDraft(String(unitNow));
+    setError("");
+    setEditing(true);
+  }
+
+  function cancel() {
+    setEditing(false);
+    setError("");
+  }
+
+  function save() {
+    if (!draftValid) { setError("Enter a valid price (0 or more)."); return; }
+    if (newLine === lineNow) { cancel(); return; }
+
+    const key = itemKey(item);
+    const nextItems = order.items.map(i => itemKey(i) === key ? { ...i, price: newLine } : i);
+    const newTotal = sumLines(nextItems);
+    const advance = Number(order.advance) || 0;
+    if (newTotal < advance) {
+      setError(`Order total would be ${inr(newTotal)}, below the ${inr(advance)} already received. Correct the payments first.`);
+      return;
+    }
+
+    const shortName = (item.name || "Item").length > 45 ? item.name.slice(0, 45) + "…" : (item.name || "Item");
+    const label = `Price: ${shortName} ${inr(lineNow)} → ${inr(newLine)} · order total ${inr(order.value)} → ${inr(newTotal)}`;
+
+    // Function form: builds from the LATEST order, so it can't clobber a change that
+    // landed (e.g. an image upload finishing) while the editor was open.
+    onUpdate(o => {
+      const items = o.items.map(i => itemKey(i) === key ? { ...i, price: newLine } : i);
+      return {
+        ...o,
+        items,
+        value: sumLines(items),
+        ...(o.costApproved ? { costApproved: false } : {}),
+        _editLogField: label,
+      };
+    });
+    setEditing(false);
+    setError("");
+  }
+
+  if (!editing) {
+    return (
+      <div style={{ textAlign: "right" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 500 }}>{formatCurrency(item.price)}</div>
+          {canEdit && (
+            <button onClick={start} title="Edit price" aria-label="Edit price"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: 2, display: "flex" }}>
+              <i className="ti ti-pencil" style={{ fontSize: 14 }} />
+            </button>
+          )}
+        </div>
+        {qty > 1 && (
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{inr(unitNow)} × {qty}</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ textAlign: "right", minWidth: 220 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+        <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{qty > 1 ? "Unit price ₹" : "Price ₹"}</span>
+        <input
+          type="number" min="0" step="any" autoFocus value={draft}
+          onChange={e => { setDraft(e.target.value); setError(""); }}
+          onKeyDown={e => { if (e.key === "Enter") save(); else if (e.key === "Escape") cancel(); }}
+          style={{ width: 110, fontSize: 13, padding: "5px 8px", borderRadius: 7, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontFamily: "inherit", textAlign: "right" }}
+        />
+        <Btn variant="primary" onClick={save} style={{ padding: "5px 10px" }}>Save</Btn>
+        <Btn onClick={cancel} style={{ padding: "5px 10px" }}>Cancel</Btn>
+      </div>
+      {draftValid && (
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 4 }}>
+          {qty > 1 ? `Line total: ${inr(newLine)} (${qty} × ${inr(draftNum)})` : `Line total: ${inr(newLine)}`}
+        </div>
+      )}
+      {order.costApproved && (
+        <div style={{ fontSize: 11, color: "#633806", marginTop: 2 }}>Cost approval will be reset — admin must re-approve.</div>
+      )}
+      {valueDiffers && (
+        <div style={{ fontSize: 11, color: "#633806", marginTop: 2 }}>
+          Order total ({inr(order.value)}) differs from the line items ({inr(itemsSum)}). Saving sets it to the line-item sum.
+        </div>
+      )}
+      {error && <div style={{ fontSize: 11, color: "#791F1F", marginTop: 4 }}>{error}</div>}
+    </div>
+  );
+}
+
 function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // Salespeople (and admins) can update product images for an item at any time,
   // independent of which stage it's in. This logs an edit-log entry so it's clear
@@ -596,6 +715,10 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
   // Opened to everyone — product/measurement images are editable by any role.
   const canEditImages = true;
 
+  // Line prices can be changed by admin and sales only (frontend gate, same as the
+  // other admin/sales-only actions — the PUT route itself has no role check).
+  const canEditPrice = role === "admin" || role === "sales";
+
   return (
     <div>
       {order.items.map(item => {
@@ -614,9 +737,7 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
               <div style={{ fontSize: 14, fontWeight: 500 }}>{item.name}</div>
               <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{item.productId} &middot; Qty: {item.qty}</div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>{formatCurrency(item.price)}</div>
-            </div>
+            <ItemPriceEditor order={order} item={item} canEdit={canEditPrice} onUpdate={onUpdate} />
           </div>
           <div style={{ padding: "14px 16px" }}>
             {/* Specs */}
