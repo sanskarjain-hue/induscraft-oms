@@ -632,9 +632,9 @@ function ItemPriceEditor({ order, item, canEdit, onUpdate }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
           <div style={{ fontSize: 15, fontWeight: 500 }}>{formatCurrency(item.price)}</div>
           {canEdit && (
-            <button onClick={start} title="Edit price" aria-label="Edit price"
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: 2, display: "flex" }}>
-              <i className="ti ti-pencil" style={{ fontSize: 14 }} />
+            <button onClick={start} title="Edit price"
+              style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>
+              Edit price
             </button>
           )}
         </div>
