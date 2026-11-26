@@ -13,6 +13,7 @@ import Visits from "./Visits";
 import MySales from "./MySales";
 import Payouts from "./Payouts";
 import Overview from "./Overview";
+import WhatsNew from "./WhatsNew";
 import { ConfirmHost, confirmAsync, PageSkeleton } from "./ui";
 
 const NAV = [
@@ -500,6 +501,8 @@ export default function App() {
                   <i className={refreshing ? "ti ti-refresh spin" : "ti ti-refresh"} />
                 </button>
               )}
+
+              <WhatsNew role={role} userId={currentUser.id || currentUser._id} />
 
               <div className="app-nav-role" style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
                 <i className="ti ti-shield" style={{ fontSize: 13 }} />{ROLES[role]?.label || "Admin"}
