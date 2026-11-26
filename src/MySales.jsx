@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import * as api from "./api";
+import PersonOrders from "./PersonOrders";
 
 // ── formatting ────────────────────────────────────────────
 const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
@@ -184,6 +185,7 @@ function OrdersCard({ me, rate }) {
             {o.delivered
               ? <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "#EAF3DE", color: "#27500A" }}>Delivered</span>
               : <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "#FAEEDA", color: "#633806" }}>In progress</span>}
+            {o.underReview && <span style={{ marginLeft: 4, fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "#FCEBEB", color: "#791F1F" }}>Under review</span>}
           </div>
         </div>
       ))}
@@ -192,7 +194,7 @@ function OrdersCard({ me, rate }) {
   );
 }
 
-function TeamCard({ people, unmatched, monthName }) {
+function TeamCard({ people, unmatched, monthName, onOpenPerson }) {
   return (
     <div style={{ ...CARD, padding: "4px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 6px", fontSize: 13, fontWeight: 600 }}>
@@ -200,9 +202,10 @@ function TeamCard({ people, unmatched, monthName }) {
       </div>
       {people.length === 0 && <div style={{ fontSize: 13, ...MUTED, padding: "10px 0 14px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>No orders that count toward commission this month.</div>}
       {people.map(p => (
-        <div key={p.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+        <div key={p.key} role="button" tabIndex={0} aria-label={`Review ${p.name}'s orders`} onClick={() => onOpenPerson(p)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenPerson(p); } }}
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14 }}>{p.name}</div>
+            <div style={{ fontSize: 14 }}>{p.name}{p.flagged > 0 && <span style={{ marginLeft: 8, fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "#FCEBEB", color: "#791F1F" }}>{p.flagged} flagged</span>}</div>
             <div style={{ fontSize: 12, ...MUTED }}>
               {money(p.sales)} sold · {p.rate}%{p.next ? ` · ${money(p.next.remaining)} to next slab` : " · top slab"}
             </div>
@@ -211,6 +214,7 @@ function TeamCard({ people, unmatched, monthName }) {
             <div style={{ fontSize: 14, fontWeight: 500 }}>{inr(p.commission)}</div>
             <div style={{ fontSize: 11, ...MUTED }}>{p.prev && p.prev.sales > 0 ? `last month ${money(p.prev.sales)}` : "no sales last month"}</div>
           </div>
+          <i className="ti ti-chevron-right" style={{ fontSize: 14, color: "var(--color-text-secondary)" }} aria-hidden="true" />
         </div>
       ))}
       {unmatched && unmatched.length > 0 && (
@@ -232,6 +236,7 @@ export default function MySales({ role, onOpenPipeline }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState(null);
 
   const load = useCallback(() => {
     let live = true;
@@ -272,7 +277,7 @@ export default function MySales({ role, onOpenPipeline }) {
 
       {data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, opacity: loading ? 0.6 : 1 }}>
-          {isAdmin && <TeamCard people={data.people || []} unmatched={data.unmatched} monthName={monthLabel(data.month)} />}
+          {isAdmin && <TeamCard people={data.people || []} unmatched={data.unmatched} monthName={monthLabel(data.month)} onOpenPerson={setReviewing} />}
           {showOwn && (
             <>
               <Meter me={data.me} prev={data.prev} config={data.config} calendar={data.calendar} title="Your meter" showTitle={isAdmin} />
@@ -285,6 +290,7 @@ export default function MySales({ role, onOpenPipeline }) {
           </div>
         </div>
       )}
+      {reviewing && data && <PersonOrders month={data.month} person={reviewing} onClose={() => setReviewing(null)} onChanged={() => load()} />}
     </div>
   );
 }

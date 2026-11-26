@@ -5,6 +5,14 @@
 
 const SALES = [
   {
+    id: "2026-11-26-review",
+    date: "26 Nov 2026",
+    title: "Orders under review",
+    items: [
+      { icon: "ti-flag", title: "Under review", text: "Sometimes the office wants a second look at an order before its commission is paid. That order shows an Under review tag on My Sales. It still counts toward your sales and your slab, and nothing about your rate changes. Its commission is paid once the check is done." },
+    ],
+  },
+  {
     id: "2026-11-26",
     date: "26 Nov 2026",
     title: "Your sales tools",
@@ -19,6 +27,15 @@ const SALES = [
 ];
 
 const ADMIN = [
+  {
+    id: "2026-11-26-review",
+    date: "26 Nov 2026",
+    title: "Review the orders behind each commission",
+    items: [
+      { icon: "ti-list-search", title: "Click a salesperson to see their orders", text: "On My Sales, Overview and Payouts, click anyone's name to see every order they earn commission from this month: the customer, order value, commission, and whether it's waiting on delivery, ready to pay, on hold or paid. Use the month stepper first to look at another month." },
+      { icon: "ti-flag", title: "Flag an order", text: "If something looks wrong, press Flag for review and give a short reason. A flagged order still counts toward the person's sales and slab, but its commission is held out of payouts until you clear the flag. The person sees an Under review tag, not your reason. Payouts shows how much is on hold, and Mark paid skips held orders. Clearing a flag makes the order payable again. Every flag and clear is kept on file." },
+    ],
+  },
   {
     id: "2026-11-26",
     date: "26 Nov 2026",

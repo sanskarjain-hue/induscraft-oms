@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import * as api from "./api";
+import PersonOrders from "./PersonOrders";
 
 const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
 // ₹1,20,000 -> ₹1.2L, ₹2,50,00,000 -> ₹2.5Cr
@@ -41,9 +42,10 @@ function Bar({ pct, color = "#639922" }) {
   );
 }
 
-function Row({ left, right, sub }) {
+function Row({ left, right, sub, onClick, label }) {
+  const click = onClick ? { role: "button", tabIndex: 0, "aria-label": label, onClick, onKeyDown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } } : {};
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderTop: "0.5px solid var(--color-border-tertiary)", fontSize: 13 }}>
+    <div {...click} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderTop: "0.5px solid var(--color-border-tertiary)", fontSize: 13, cursor: onClick ? "pointer" : "default" }}>
       <span style={{ minWidth: 0 }}>{left}{sub && <span style={{ fontSize: 12, ...MUTED }}> {sub}</span>}</span>
       <span style={{ fontWeight: 500, whiteSpace: "nowrap" }}>{right}</span>
     </div>
@@ -156,12 +158,12 @@ function Showroom({ e }) {
   );
 }
 
-function Team({ c }) {
+function Team({ c, onOpenPerson }) {
   return (
     <div style={CARD}>
       <div style={H}>Team and commission</div>
       {c.people.length === 0 && <div style={{ fontSize: 13, ...MUTED }}>No orders counted toward commission.</div>}
-      {c.people.map(p => <Row key={p.key} left={p.name} sub={`${short(p.sales)} sold · ${p.rate}% slab`} right={inr(p.commission)} />)}
+      {c.people.map(p => <Row key={p.key} left={p.name} sub={`${short(p.sales)} sold · ${p.rate}% slab`} right={<>{inr(p.commission)} <i className="ti ti-chevron-right" style={{ fontSize: 13, color: "var(--color-text-secondary)", verticalAlign: -2 }} aria-hidden="true" /></>} onClick={() => onOpenPerson(p)} label={`Review ${p.name}'s orders`} />)}
       {c.people.length > 0 && (
         <div style={{ fontSize: 12, ...MUTED, marginTop: 8 }}>
           {inr(c.earned)} earned on delivered orders, {inr(c.pending)} waiting on delivery, {inr(c.paid)} paid.
@@ -176,6 +178,7 @@ export default function Overview({ onOpenPayouts, onOpenPipeline }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState(null);
 
   const load = useCallback(() => {
     let live = true;
@@ -242,7 +245,7 @@ export default function Overview({ onOpenPayouts, onOpenPipeline }) {
           )}
 
           <Revenue r={rev} />
-          <Team c={data.commission} />
+          <Team c={data.commission} onOpenPerson={setReviewing} />
           <Funnel e={data.enquiries} />
           <SourcesAndPeople e={data.enquiries} />
           <Showroom e={data.enquiries} />
@@ -252,6 +255,7 @@ export default function Overview({ onOpenPayouts, onOpenPipeline }) {
           </div>
         </div>
       )}
+      {reviewing && data && <PersonOrders month={data.month} person={reviewing} onClose={() => setReviewing(null)} onChanged={() => load()} />}
     </div>
   );
 }

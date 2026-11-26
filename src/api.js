@@ -412,6 +412,18 @@ export async function fetchOverview(month) {
   return apiFetch(`/overview${month ? `?month=${encodeURIComponent(month)}` : ""}`);
 }
 
+// ── ORDER REVIEW (admin): who earns commission from which orders, and flags ──
+export async function fetchPersonOrders(month, key) {
+  return apiFetch(`/payouts/person?month=${encodeURIComponent(month)}&key=${encodeURIComponent(key)}`);
+}
+// Holds an order's commission out of payouts until cleared. reason is required.
+export async function flagOrder(orderId, reason) {
+  return apiFetch("/payouts/flags", { method: "POST", body: JSON.stringify({ orderId, reason }) });
+}
+export async function clearFlag(orderId, note) {
+  return apiFetch(`/payouts/flags/${encodeURIComponent(orderId)}`, { method: "DELETE", body: JSON.stringify({ note }) });
+}
+
 // ── PAYOUTS (admin) ──────────────────────────────────────
 export async function fetchPayouts(month) {
   return apiFetch(`/payouts${month ? `?month=${encodeURIComponent(month)}` : ""}`);
