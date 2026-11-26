@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as api from "./api";
 import { formatCurrency } from "./ui";
+import TodayView from "./TodayView";
+import { followUpState, todayStr } from "./followUp";
 
 const ACTIVE_STAGES = ["New Inquiry", "Warm", "Cold", "Negotiation"];
 const ALL_STAGES = ["New Inquiry", "Warm", "Cold", "Negotiation", "Won", "Lost"];
@@ -499,6 +501,7 @@ function KanbanView({ deals, onOpen, onMove }) {
                       onMouseLeave={e => e.currentTarget.style.background = "var(--color-background-primary)"}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{deal.customerName}</div>
                       {deal.enquiry && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6, lineHeight: 1.4 }}>{deal.enquiry.slice(0, 55)}{deal.enquiry.length > 55 ? "..." : ""}</div>}
+                      {(deal.source || deal.channel) && <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 6 }}>{deal.source || deal.channel}{followUpState(deal).bucket === "today" && <span style={{ color: "#633806", fontWeight: 500 }}> · follow-up due</span>}</div>}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         {deal.estimatedValue ? <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-info)" }}>{formatCurrency(deal.estimatedValue)}</span> : <span />}
                         {days !== null && <span style={{ fontSize: 10, color: days > 7 ? "#791F1F" : days > 3 ? "#633806" : "#27500A", fontWeight: 500 }}>{days === 0 ? "Today" : `${days}d`}</span>}
@@ -514,11 +517,37 @@ function KanbanView({ deals, onOpen, onMove }) {
   );
 }
 
+// ── COMMISSION STRIP (salespeople only) ───────────────────
+// One line: this month's commission and the gap to the next slab. Tapping it opens My Sales.
+// If the numbers can't be loaded the strip simply isn't shown; the pipeline works without it.
+const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+const lakh = n => `₹${parseFloat((n / 100000).toFixed(2))}L`;
+
+function MeterStrip({ onOpen }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let live = true;
+    api.fetchCommission(null).then(d => { if (live) setData(d); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  if (!data || !data.me || !data.calendar.isCurrent) return null;
+  const { me } = data;
+  return (
+    <button onClick={onOpen} aria-label="Open My Sales"
+      style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left", marginBottom: 14, padding: "10px 14px", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", cursor: "pointer", fontFamily: "inherit", color: "var(--color-text-primary)" }}>
+      <span style={{ fontSize: 13 }}><span style={{ fontWeight: 600 }}>{inr(me.commission)}</span> <span style={{ color: "var(--color-text-secondary)" }}>commission this month</span></span>
+      <span style={{ fontSize: 12, color: "var(--color-text-info)", whiteSpace: "nowrap" }}>
+        {me.next ? `${lakh(me.next.remaining)} to ${me.next.rate}%` : "Top slab"} <i className="ti ti-arrow-right" style={{ fontSize: 12, verticalAlign: -1 }} aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
 // ── MAIN PIPELINE ─────────────────────────────────────────
-export default function Pipeline({ currentUser, role, onCreateOrder }) {
+export default function Pipeline({ currentUser, role, onCreateOrder, onOpenSales }) {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("table"); // table | kanban | closed
+  const [view, setView] = useState(role === "sales" ? "today" : "table"); // today | table | kanban | closed
   const [showNewDeal, setShowNewDeal] = useState(false);
   const [openDeal, setOpenDeal] = useState(null);
   const [sortCol, setSortCol] = useState("lastContacted");
@@ -547,6 +576,11 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
     setOpenDeal(updated);
   }
 
+  // Same as handleUpdate but without opening the deal window (used by the Today list).
+  function replaceDeal(updated) {
+    setDeals(prev => prev.map(d => d._id === updated._id ? updated : d));
+  }
+
   // Drag-and-drop between the four OPEN stages only. Won / Lost are deliberately not
   // drop targets: they need a lost-reason or the order handoff, which live in the deal
   // window. The card moves immediately; if the server refuses, it snaps back and says so.
@@ -572,6 +606,10 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
   const salespeople = [...new Set(deals.map(d => d.salesperson))].filter(Boolean).sort();
   const activeDeals = deals.filter(d => ACTIVE_STAGES.includes(d.stage));
   const closedDeals = deals.filter(d => d.stage === "Won" || d.stage === "Lost");
+  const dueTodayCount = useMemo(() => {
+    const t = todayStr();
+    return activeDeals.filter(d => followUpState(d, t).bucket === "today").length;
+  }, [deals]);
 
   const vr = VALUE_RANGES[fValue];
   const filtered = useMemo(() => {
@@ -610,7 +648,7 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
         <div style={{ fontSize: 20, fontWeight: 500 }}>Sales Pipeline</div>
         <div className="pl-head-actions" style={{ display: "flex", gap: 8 }}>
           <div style={{ display: "flex", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, overflow: "hidden" }}>
-            {[["table", "Table"], ["kanban", "Kanban"], ["closed", "Closed"]].map(([v, l]) => (
+            {[["today", dueTodayCount > 0 ? `Today (${dueTodayCount})` : "Today"], ["table", "Table"], ["kanban", "Kanban"], ["closed", "Closed"]].map(([v, l]) => (
               <button key={v} onClick={() => setView(v)} style={{
                 fontSize: 12, padding: "6px 14px", border: "none", cursor: "pointer", fontFamily: "inherit",
                 background: view === v ? "var(--color-text-primary)" : "transparent",
@@ -624,6 +662,8 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
           </button>
         </div>
       </div>
+
+      {role === "sales" && onOpenSales && <MeterStrip onOpen={onOpenSales} />}
 
       {/* Stats header — admin only */}
       {!loading && <StatsHeader deals={deals} role={role} />}
@@ -660,6 +700,8 @@ export default function Pipeline({ currentUser, role, onCreateOrder }) {
 
       {loading ? (
         <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>Loading...</div>
+      ) : view === "today" ? (
+        <TodayView deals={filtered} role={role} onOpen={setOpenDeal} onDealChanged={replaceDeal} />
       ) : view === "kanban" ? (
         <>
           {moveError && (

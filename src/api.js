@@ -382,6 +382,12 @@ export async function addDealLog(id, text) {
   return apiFetch(`/deals/${id}/log`, { method: "POST", body: JSON.stringify({ text }) });
 }
 
+// One tap after a call. { days: 1..90 } sets the next follow-up; { lost: true, reason } closes the deal.
+// Optional { note } goes into the activity log.
+export async function markDealCalled(id, payload) {
+  return apiFetch(`/deals/${id}/called`, { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function deleteDeal(id) {
   return apiFetch(`/deals/${id}`, { method: "DELETE" });
 }

@@ -624,7 +624,7 @@ export default function App() {
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "sales" && (role === "admin" || role === "sales") && <MySales role={role} onOpenPipeline={() => navigate("pipeline")} />}
             {page === "visits" && (role === "admin" || role === "sales") && <Visits role={role} onOpenPipeline={() => navigate("pipeline")} />}
-            {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
+            {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onOpenSales={() => navigate("sales")} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
             </div>
             )}
           </main>
