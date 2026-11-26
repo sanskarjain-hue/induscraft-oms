@@ -407,6 +407,20 @@ export async function saveCommissionConfig(config) {
   return apiFetch("/commission/config", { method: "PUT", body: JSON.stringify({ config }) });
 }
 
+// ── PAYOUTS (admin) ──────────────────────────────────────
+export async function fetchPayouts(month) {
+  return apiFetch(`/payouts${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+}
+
+// Pays everything payable for one person. expectedAmount is the figure on screen; the server refuses if it moved.
+export async function recordPayout({ month, key, expectedAmount, reference }) {
+  return apiFetch("/payouts", { method: "POST", body: JSON.stringify({ month, key, expectedAmount, reference }) });
+}
+
+export async function voidPayout(id, reason) {
+  return apiFetch(`/payouts/${id}`, { method: "DELETE", body: JSON.stringify({ reason }) });
+}
+
 // ── VISITS (showroom walk-ins) & WEBSITE ENQUIRIES ───────
 export async function fetchVisits(days = 30) {
   return apiFetch(`/visits?days=${days}`);

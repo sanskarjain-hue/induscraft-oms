@@ -43,6 +43,14 @@ function Meter({ me, prev, config, calendar, title, showTitle }) {
       <div style={{ fontSize: 30, fontWeight: 500, lineHeight: 1.1 }}>{inr(me.commission)}</div>
       <div style={{ fontSize: 13, ...MUTED, marginTop: 2 }}>commission {calendar.isCurrent ? "this month" : "that month"}</div>
 
+      {me.payouts && me.payouts.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "#27500A" }}>
+          <i className="ti ti-circle-check" style={{ fontSize: 15, verticalAlign: -3, marginRight: 4 }} aria-hidden="true" />
+          {inr(me.payouts.reduce((s, p) => s + p.amount, 0))} paid
+          {me.payouts.length === 1 ? ` on ${new Date(me.payouts[0].paidAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ` in ${me.payouts.length} payments`}
+        </div>
+      )}
+
       {!empty && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
           <Chip bg="#EAF3DE" fg="#27500A">{inr(me.earned)} earned</Chip>
