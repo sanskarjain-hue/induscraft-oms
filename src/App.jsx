@@ -12,10 +12,12 @@ import Pipeline from "./Pipeline";
 import Visits from "./Visits";
 import MySales from "./MySales";
 import Payouts from "./Payouts";
+import Overview from "./Overview";
 import { ConfirmHost, confirmAsync, PageSkeleton } from "./ui";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: "ti-home" },
+  { id: "overview", label: "Overview", icon: "ti-chart-pie" },
   { id: "orders", label: "Orders", icon: "ti-file-text" },
   { id: "vendors", label: "Vendors", icon: "ti-users" },
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
@@ -625,6 +627,7 @@ export default function App() {
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={arg => handleUpdateOrder(arg)} />}
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
             {page === "sales" && (role === "admin" || role === "sales") && <MySales role={role} onOpenPipeline={() => navigate("pipeline")} />}
+            {page === "overview" && role === "admin" && <Overview onOpenPayouts={() => navigate("payouts")} onOpenPipeline={() => navigate("pipeline")} />}
             {page === "payouts" && role === "admin" && <Payouts />}
             {page === "visits" && (role === "admin" || role === "sales") && <Visits role={role} onOpenPipeline={() => navigate("pipeline")} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onOpenSales={() => navigate("sales")} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}

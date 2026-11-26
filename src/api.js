@@ -407,6 +407,11 @@ export async function saveCommissionConfig(config) {
   return apiFetch("/commission/config", { method: "PUT", body: JSON.stringify({ config }) });
 }
 
+// ── OVERVIEW (admin) ─────────────────────────────────────
+export async function fetchOverview(month) {
+  return apiFetch(`/overview${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+}
+
 // ── PAYOUTS (admin) ──────────────────────────────────────
 export async function fetchPayouts(month) {
   return apiFetch(`/payouts${month ? `?month=${encodeURIComponent(month)}` : ""}`);
