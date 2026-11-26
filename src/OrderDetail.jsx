@@ -1854,7 +1854,7 @@ export default function OrderDetail({ order, role, vendors, orders, onBack, onUp
           <div style={{ background: "var(--color-background-primary)", borderRadius: 14, padding: 28, width: 380, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Archive this order?</div>
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 20 }}>
-              The order will be removed from the active dashboard and moved to Past Orders. This can be undone — use Restore from Past Orders to bring it back.
+              The order will be removed from the active dashboard and moved to Archive. This can be undone — use Restore in Archive to bring it back.
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setShowArchiveConfirm(false)} style={{ fontSize: 13, padding: "8px 18px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>

@@ -230,7 +230,7 @@ export default function Overview({ onOpenPayouts, onOpenPipeline }) {
               {a.goingCold.count > 0 && (
                 <div><i className="ti ti-clock-exclamation" style={{ fontSize: 15, verticalAlign: -3, marginRight: 6, color: "#633806" }} aria-hidden="true" />
                   {a.goingCold.count} open {plural(a.goingCold.count, "deal", "deals")} ({short(a.goingCold.value)}) with no contact in {a.goingCold.days}+ days.
-                  {onOpenPipeline && <button onClick={onOpenPipeline} style={{ marginLeft: 8, background: "none", border: "none", color: "var(--color-text-info)", cursor: "pointer", fontSize: 13, fontFamily: "inherit", padding: 0 }}>Open pipeline</button>}</div>
+                  {onOpenPipeline && <button onClick={onOpenPipeline} style={{ marginLeft: 8, background: "none", border: "none", color: "var(--color-text-info)", cursor: "pointer", fontSize: 13, fontFamily: "inherit", padding: 0 }}>Open Leads</button>}</div>
               )}
               {data.commission.prevUnpaid > 0 && (
                 <div><i className="ti ti-cash" style={{ fontSize: 15, verticalAlign: -3, marginRight: 6, color: "#633806" }} aria-hidden="true" />

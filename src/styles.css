@@ -117,9 +117,58 @@ div[style*="position: fixed"][style*="rgba(0"]:not(.print-overlay) { animation: 
 
 .app-nav-left { min-width: 0; flex: 1; }
 .app-nav-right { flex-shrink: 0; }
-.app-nav-links { min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.app-nav-links::-webkit-scrollbar { display: none; }
-.app-nav-links button { flex-shrink: 0; white-space: nowrap; }
+/* ── Top-bar tabs: grouped menus (NavMenu.jsx) ───────────────────
+   The strip must not scroll or clip: the menus hang below it.            */
+.app-nav-links { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.app-nav-links button { flex-shrink: 0; white-space: nowrap; font-family: inherit; }
+.navg { position: relative; }
+.navg-btn, .navflat-tab {
+  display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 10px 6px 12px;
+  border: none; border-radius: 8px; cursor: pointer; background: transparent;
+  color: var(--color-text-secondary); position: relative;
+  transition: background-color .18s ease, color .18s ease;
+}
+.navflat-tab { padding: 6px 12px; }
+.navg-btn:hover, .navflat-tab:hover, .navg.is-open .navg-btn { background: var(--color-background-secondary); color: var(--color-text-primary); }
+.navg.is-active .navg-btn, .navflat-tab.current { color: var(--color-text-primary); font-weight: 500; }
+/* a short red bar that grows in under the group holding the current page */
+.navg-btn::after, .navflat-tab::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -9px; height: 2px; border-radius: 2px;
+  background: #C0392B; transform: scaleX(0); transform-origin: center; transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.navg.is-active .navg-btn::after, .navflat-tab.current::after { transform: scaleX(1); }
+.navg-btn .nav-ico, .navflat-tab .nav-ico { font-size: 14px; }
+.navg-current { color: var(--color-text-secondary); font-weight: 400; }
+.navg-short { display: none; }
+.navg-sep { margin: 0 5px 0 1px; }
+.navg-chev { font-size: 12px; opacity: .6; transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .18s; }
+.navg.is-open .navg-chev { transform: rotate(180deg); opacity: 1; }
+
+.navg-menu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 120; min-width: 196px; margin: 0; padding: 6px; list-style: none;
+  background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(20, 20, 15, .10), 0 2px 6px rgba(20, 20, 15, .06);
+  opacity: 0; visibility: hidden; transform: translateY(-6px) scale(.98); transform-origin: top left; pointer-events: none;
+  transition: opacity .16s ease, transform .2s cubic-bezier(.2,.8,.2,1), visibility 0s linear .2s;
+}
+.navg-menu.end { left: auto; right: 0; transform-origin: top right; }
+/* invisible bridge over the 8px gap, so the mouse can travel from button to menu without it closing */
+.navg-menu::before { content: ""; position: absolute; left: 0; right: 0; top: -9px; height: 9px; }
+.navg.is-open .navg-menu { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity .16s ease, transform .22s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+/* items slide in one after another */
+.navg-menu li { opacity: 0; transform: translateY(-4px); transition: opacity .18s ease, transform .22s cubic-bezier(.2,.8,.2,1); }
+.navg.is-open .navg-menu li { opacity: 1; transform: none; transition-delay: calc(var(--i) * 30ms + 30ms); }
+.navg-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 13px; text-align: left;
+  border: none; border-radius: 8px; background: transparent; color: var(--color-text-primary); cursor: pointer; position: relative;
+  transition: background-color .15s ease, padding-left .2s cubic-bezier(.2,.8,.2,1);
+}
+.navg-item i { font-size: 15px; color: var(--color-text-secondary); transition: color .15s ease, transform .2s cubic-bezier(.2,.8,.2,1); }
+.navg-item:hover, .navg-item:focus-visible { background: var(--color-background-secondary); padding-left: 13px; outline: none; }
+.navg-item:hover i, .navg-item:focus-visible i { color: #C0392B; transform: scale(1.08); }
+.navg-item.current { font-weight: 500; background: var(--color-background-secondary); }
+.navg-item.current i { color: #C0392B; }
+.navg-item.current::before { content: ""; position: absolute; left: 2px; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: #C0392B; }
 .tabbar button { flex-shrink: 0; white-space: nowrap; }
 
 /* ── 5. RESPONSIVE ─────────────────────────────────────────────────
@@ -161,7 +210,24 @@ div[style*="position: fixed"][style*="rgba(0"]:not(.print-overlay) { animation: 
   [style*="grid-template-columns: repeat(6"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   /* phones: text-only tabs (labels are the dependable part if the icon font is slow/blocked) */
   .nav-ico { display: none; }
-  .app-nav-links button { padding: 6px 10px !important; }
+  /* phones: tighter buttons, a short name for Operations, a smaller chevron, long page names cut with … */
+  .navg-btn { padding: 6px 6px 6px 8px; gap: 3px; }
+  .navg-btn::after { left: 8px; right: 8px; }
+  .has-short .navg-long { display: none; }
+  .navg-short { display: inline; }
+  .navg-chev { font-size: 10px; }
+  .navg-current { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
+  .app-nav-links { gap: 0; }
+  .navflat-tab { padding: 6px 10px; }
+  /* phones: the group holding the current page shows that page's name instead of the group's */
+  .navg.is-active .navg-name, .navg-sep { display: none; }
+  .navg-current { color: inherit; font-weight: inherit; }
+  .navg-menu { min-width: 180px; }
+}
+
+/* very narrow phones (320px): drop the menu chevrons so the tabs and buttons fit on one line */
+@media (max-width: 359px) {
+  .navg-chev { display: none; }
 }
 
 /* ── ACCESSIBILITY: honour "reduce motion" ─────────────────────── */

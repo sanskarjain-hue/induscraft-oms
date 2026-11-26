@@ -18,7 +18,7 @@ export default function PastOrders({ orders, role, onOrderClick, onUpdate }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 500 }}>Past Orders</div>
+          <div style={{ fontSize: 20, fontWeight: 500 }}>Archive</div>
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 3 }}>
             Completed orders (10+ days) and archived orders — {pastOrders.length} total
           </div>

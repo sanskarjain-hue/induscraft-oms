@@ -5,6 +5,15 @@
 
 const SALES = [
   {
+    id: "2026-11-26-nav",
+    date: "26 Nov 2026",
+    title: "Tidier tabs with new names",
+    items: [
+      { icon: "ti-layout-navbar", title: "Tabs are now in groups", text: "The top bar has two groups: Operations and Sales. Hover over a group, or tap it on your phone, and its tabs slide open. The group you're in is underlined in red and shows the page you're on." },
+      { icon: "ti-tag", title: "New names", text: "Pipeline is now Leads, Visits is now Walk-ins, My Sales is now Targets, Dashboard is now Home and Past Orders is now Archive. Nothing inside them has changed." },
+    ],
+  },
+  {
     id: "2026-11-26-review",
     date: "26 Nov 2026",
     title: "Orders under review",
@@ -27,6 +36,16 @@ const SALES = [
 ];
 
 const ADMIN = [
+  {
+    id: "2026-11-26-nav",
+    date: "26 Nov 2026",
+    title: "Tidier tabs with new names",
+    items: [
+      { icon: "ti-layout-navbar", title: "Tabs are now in groups", text: "The top bar has three groups. Operations: Home, Orders, Archive and Vendors. Sales: Leads, Walk-ins and Targets. Admin: Business, Payouts and Settings. Hover over a group, or tap it on a phone, and its tabs slide open. QC and accountant logins still see plain tabs, since they only have one group." },
+      { icon: "ti-tag", title: "New names", text: "Dashboard is now Home, Past Orders is Archive, Pipeline is Leads, Visits is Walk-ins, My Sales is Targets and Overview is Business. Nothing inside them has changed." },
+      { icon: "ti-eye-off", title: "Reports and After-sales are hidden", text: "Both were unfinished: Reports was switched off, and After-sales didn't save anything, so jobs vanished on refresh. Their tabs are gone for now and will come back once they work properly." },
+    ],
+  },
   {
     id: "2026-11-26-review",
     date: "26 Nov 2026",

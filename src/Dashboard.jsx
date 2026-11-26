@@ -179,7 +179,7 @@ export default function Dashboard({ orders, role, onOrderClick }) {
       <style>{`.dash-stat:hover { border-color: var(--color-border-primary) !important; }`}</style>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ fontSize: 20, fontWeight: 500 }}>Dashboard</div>
+        <div style={{ fontSize: 20, fontWeight: 500 }}>Home</div>
       </div>
 
       {/* Needs attention */}

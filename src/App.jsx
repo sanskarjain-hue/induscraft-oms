@@ -14,25 +14,12 @@ import MySales from "./MySales";
 import Payouts from "./Payouts";
 import Overview from "./Overview";
 import WhatsNew from "./WhatsNew";
+import NavMenu from "./NavMenu";
 import { ConfirmHost, confirmAsync, PageSkeleton } from "./ui";
 
-const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "ti-home" },
-  { id: "overview", label: "Overview", icon: "ti-chart-pie" },
-  { id: "orders", label: "Orders", icon: "ti-file-text" },
-  { id: "vendors", label: "Vendors", icon: "ti-users" },
-  { id: "aftersales", label: "After-sales", icon: "ti-tool" },
-  { id: "reports", label: "Reports", icon: "ti-chart-bar" },
-  { id: "pastorders", label: "Past Orders", icon: "ti-archive" },
-  { id: "sales", label: "My Sales", icon: "ti-trophy" },
-  { id: "payouts", label: "Payouts", icon: "ti-cash" },
-  { id: "visits", label: "Visits", icon: "ti-walk" },
-  { id: "pipeline", label: "Pipeline", icon: "ti-chart-dots" },
-  { id: "settings", label: "Settings", icon: "ti-settings" },
-];
 
-// Reports is temporarily taken down while it is being fixed.
-// To re-release: set this to true (nothing else needs to change).
+// Reports and After-sales are not finished, so they have no tab (see NAV_GROUPS in NavMenu.jsx).
+// To re-release Reports: set this to true and add it back to a group there.
 const REPORTS_ENABLED = false;
 
 // "Updated 3 min ago" — re-renders itself every 30s; hidden on phones via CSS.
@@ -312,12 +299,6 @@ export default function App() {
     };
   }, [currentUser]);
 
-  // Keep the current tab visible in the (sideways-scrolling) nav strip on small screens
-  useEffect(() => {
-    const el = document.querySelector('.app-nav-links button[aria-current="page"]');
-    if (el && el.scrollIntoView) el.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [page, currentUser]);
-
   const role = currentUser?.role || "admin";
 
   function navigate(p, orderId = null, vendorId = null) {
@@ -472,22 +453,9 @@ export default function App() {
           <nav className="app-nav" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px", height: 52, borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", position: "sticky", top: 0, zIndex: 100 }}>
             <div className="app-nav-left" style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <div className="app-nav-brand" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.3px" }}>
-                <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>Operations</span> <span style={{ color: "#C0392B", fontWeight: 600 }}>— Induscraft</span>
+                <span style={{ color: "#C0392B", fontWeight: 600 }}>Induscraft</span> <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: 13 }}>OMS</span>
               </div>
-              <div className="app-nav-links" style={{ display: "flex", gap: 2 }}>
-                {NAV.filter(n => {
-                  if (n.id === "reports" && !REPORTS_ENABLED) return false;
-                  if (role === "admin") return true;
-                  if (role === "sales") return ["sales", "dashboard", "orders", "visits", "pipeline", "pastorders"].includes(n.id);
-                  if (role === "qc") return ["dashboard", "orders"].includes(n.id);
-                  if (role === "accountant") return ["dashboard", "orders", "reports", "pastorders"].includes(n.id);
-                  return ["dashboard", "orders"].includes(n.id);
-                }).map(n => (
-                  <button key={n.id} onClick={() => navigate(n.id)} title={n.label} aria-current={page === n.id ? "page" : undefined} style={{ fontSize: 13, padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: page === n.id ? "var(--color-background-secondary)" : "transparent", color: page === n.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: page === n.id ? 500 : 400, display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
-                    <i className={`ti ${n.icon} nav-ico`} style={{ fontSize: 14 }} /><span className="nav-label">{n.label}</span>
-                  </button>
-                ))}
-              </div>
+              <NavMenu role={role} page={page} onNavigate={p => navigate(p)} />
             </div>
             <div className="app-nav-right" style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {loading && <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Loading...</div>}

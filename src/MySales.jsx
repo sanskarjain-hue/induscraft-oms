@@ -162,7 +162,7 @@ function PipelineCards({ pipeline, onOpenPipeline }) {
       </div>
       {onOpenPipeline && (
         <button onClick={onOpenPipeline} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontSize: 13, fontFamily: "inherit", padding: 0 }}>
-          Open pipeline <i className="ti ti-arrow-right" style={{ fontSize: 13, verticalAlign: -2 }} aria-hidden="true" />
+          Open Leads <i className="ti ti-arrow-right" style={{ fontSize: 13, verticalAlign: -2 }} aria-hidden="true" />
         </button>
       )}
     </>

@@ -187,7 +187,7 @@ function VisitRow({ v, role, visitNo, onSaved, onOpenPipeline, setNotice }) {
             {v.dealId ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#27500A" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 600 }}><i className="ti ti-circle-check" />In pipeline</span>
-                <button onClick={onOpenPipeline} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontSize: 12, fontFamily: "inherit", padding: 0 }}>Open pipeline</button>
+                <button onClick={onOpenPipeline} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontSize: 12, fontFamily: "inherit", padding: 0 }}>Open Leads</button>
               </div>
             ) : !hasContact ? (
               <button onClick={startEdit} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: 12, fontFamily: "inherit", padding: 0 }}>
@@ -420,7 +420,7 @@ function WebsiteEnquiries({ onOpenPipeline, setNotice }) {
           </div>
         ))}
         {recent.length > 0 && (
-          <button onClick={onOpenPipeline} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontSize: 12, fontFamily: "inherit", padding: 0 }}>Open pipeline</button>
+          <button onClick={onOpenPipeline} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontSize: 12, fontFamily: "inherit", padding: 0 }}>Open Leads</button>
         )}
       </div>
     </>

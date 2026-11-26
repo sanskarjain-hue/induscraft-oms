@@ -518,7 +518,7 @@ function KanbanView({ deals, onOpen, onMove }) {
 }
 
 // ── COMMISSION STRIP (salespeople only) ───────────────────
-// One line: this month's commission and the gap to the next slab. Tapping it opens My Sales.
+// One line: this month's commission and the gap to the next slab. Tapping it opens Targets.
 // If the numbers can't be loaded the strip simply isn't shown; the pipeline works without it.
 const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
 const lakh = n => `₹${parseFloat((n / 100000).toFixed(2))}L`;
@@ -533,7 +533,7 @@ function MeterStrip({ onOpen }) {
   if (!data || !data.me || !data.calendar.isCurrent) return null;
   const { me } = data;
   return (
-    <button onClick={onOpen} aria-label="Open My Sales"
+    <button onClick={onOpen} aria-label="Open Targets"
       style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left", marginBottom: 14, padding: "10px 14px", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", cursor: "pointer", fontFamily: "inherit", color: "var(--color-text-primary)" }}>
       <span style={{ fontSize: 13 }}><span style={{ fontWeight: 600 }}>{inr(me.commission)}</span> <span style={{ color: "var(--color-text-secondary)" }}>commission this month</span></span>
       <span style={{ fontSize: 12, color: "var(--color-text-info)", whiteSpace: "nowrap" }}>
@@ -645,7 +645,7 @@ export default function Pipeline({ currentUser, role, onCreateOrder, onOpenSales
     <div>
       {/* Page header */}
       <div className="pl-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ fontSize: 20, fontWeight: 500 }}>Sales Pipeline</div>
+        <div style={{ fontSize: 20, fontWeight: 500 }}>Leads</div>
         <div className="pl-head-actions" style={{ display: "flex", gap: 8 }}>
           <div style={{ display: "flex", border: "0.5px solid var(--color-border-secondary)", borderRadius: 8, overflow: "hidden" }}>
             {[["today", dueTodayCount > 0 ? `Today (${dueTodayCount})` : "Today"], ["table", "Table"], ["kanban", "Kanban"], ["closed", "Closed"]].map(([v, l]) => (
