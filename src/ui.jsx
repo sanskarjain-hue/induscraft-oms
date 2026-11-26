@@ -326,8 +326,12 @@ export function OrderTimerCell({ order }) {
 // Consolidated from Dashboard.jsx / OrdersList.jsx / PastOrders.jsx, which each had a
 // slightly different copy of these. This version matches PastOrders' (the most correct one —
 // it checks status === "archived" before evaluating delivery-based completion).
+// An item is "untouched" while it sits at its starting stage: stage 0 for a normal item,
+// the QC stage for an in-stock item (which skips vendor/production). An order is "new"
+// until someone moves any of its items on.
+const IN_STOCK_START = 4; // keep in step with IN_STOCK_START_STAGE in data.js
 export function isNewOrder(o) {
-  return !o.deliveryConfirmed && o.items.every(i => i.stageIndex === 0);
+  return !o.deliveryConfirmed && o.items.every(i => i.inStock ? i.stageIndex === IN_STOCK_START : i.stageIndex === 0);
 }
 
 export function isPastOrder(o) {

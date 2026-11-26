@@ -1432,10 +1432,19 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
 
 function VendorsTab({ order, vendors, role, onVendorClick }) {
   const totalVendorCost = order.items.reduce((s, i) => s + (i.vendorCost || 0), 0);
+  // In-stock items have no vendor, so they are left out of vendor assignments and PO exports.
+  const vendorItems = order.items.filter(i => !i.inStock);
+  const stockItems = order.items.filter(i => i.inStock);
   return (
     <div>
       <SectionTitle>Vendor assignments</SectionTitle>
-      {order.items.map(item => {
+      {stockItems.length > 0 && (
+        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>
+          <i className="ti ti-box" style={{ marginRight: 6 }} />
+          {stockItems.length === 1 ? "1 item is" : `${stockItems.length} items are`} in stock and need no vendor: {stockItems.map(i => i.name).join(", ")}
+        </div>
+      )}
+      {vendorItems.map(item => {
         const vendor = vendors.find(v => v.id === item.vendorId);
         const isDelayed = item.actualDate && item.actualDate > item.committedDate;
         return (
@@ -1505,7 +1514,8 @@ function VendorsTab({ order, vendors, role, onVendorClick }) {
         <>
           <div style={{ height: 0.5, background: "var(--color-border-tertiary)", margin: "16px 0" }} />
           <SectionTitle>PO exports</SectionTitle>
-          {order.items.map(item => {
+          {vendorItems.length === 0 && <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>No vendor purchase orders — all items are in stock.</div>}
+          {vendorItems.map(item => {
             const vendor = vendors.find(v => v.id === item.vendorId);
             return (
               <div key={itemKey(item)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, marginBottom: 8 }}>
