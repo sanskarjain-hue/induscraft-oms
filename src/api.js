@@ -386,6 +386,21 @@ export async function deleteDeal(id) {
   return apiFetch(`/deals/${id}`, { method: "DELETE" });
 }
 
+// ── COMMISSION ───────────────────────────────────────────
+// month is "YYYY-MM"; leave it out for the current month. Salespeople get only their own numbers;
+// the server decides, so nothing here can widen that.
+export async function fetchCommission(month) {
+  return apiFetch(`/commission${month ? `?month=${encodeURIComponent(month)}` : ""}`);
+}
+
+export async function fetchCommissionConfig() {
+  return apiFetch("/commission/config");
+}
+
+export async function saveCommissionConfig(config) {
+  return apiFetch("/commission/config", { method: "PUT", body: JSON.stringify({ config }) });
+}
+
 // ── VISITS (showroom walk-ins) & WEBSITE ENQUIRIES ───────
 export async function fetchVisits(days = 30) {
   return apiFetch(`/visits?days=${days}`);

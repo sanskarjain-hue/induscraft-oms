@@ -299,6 +299,112 @@ function PaymentAccounts() {
   );
 }
 
+// Commission slabs, GST factor and the channels that count. Admin only.
+// Slabs are entered in rupees of monthly sales (GST-inclusive) and a rate in percent.
+function CommissionRules() {
+  const [cfg, setCfg] = useState(null);
+  const [defaults, setDefaults] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState({ ok: "", err: "" });
+
+  useEffect(() => {
+    api.fetchCommissionConfig()
+      .then(r => { setCfg(toForm(r.config)); setDefaults(r.defaults); })
+      .catch(e => { setLoadErr(e.message || "Could not load commission rules"); });
+  }, []);
+
+  function toForm(c) {
+    return {
+      gstFactor: String(c.gstFactor),
+      slabs: c.slabs.map(s => ({ from: String(s.from), rate: String(s.rate) })),
+      channels: c.channels.join(", "),
+    };
+  }
+  function touch(next) { setCfg(next); setMsg({ ok: "", err: "" }); }
+  function setSlab(i, key, value) {
+    touch({ ...cfg, slabs: cfg.slabs.map((s, j) => (j === i ? { ...s, [key]: value } : s)) });
+  }
+
+  async function save() {
+    setSaving(true); setMsg({ ok: "", err: "" });
+    try {
+      const payload = {
+        gstFactor: Number(cfg.gstFactor),
+        slabs: cfg.slabs.map(s => ({ from: Number(s.from), rate: Number(s.rate) })),
+        channels: cfg.channels.split(",").map(c => c.trim()).filter(Boolean),
+      };
+      const r = await api.saveCommissionConfig(payload);
+      setCfg(toForm(r.config));
+      setMsg({ ok: "Saved. It applies to every month, including past ones.", err: "" });
+      setTimeout(() => setMsg(m => ({ ...m, ok: "" })), 4000);
+    } catch (e) { setMsg({ ok: "", err: e.message || "Could not save" }); }
+    finally { setSaving(false); }
+  }
+
+  const INPUT = { width: "100%", fontSize: 12, padding: "7px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit", boxSizing: "border-box" };
+  const LABEL = { fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 };
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>Commission rules</div>
+      <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 14 }}>
+        Each salesperson's slab is set by their own monthly sales, and its rate applies to everything they sold that month.
+      </div>
+      {loadErr && <div style={{ fontSize: 12, color: "#C0392B", marginBottom: 8 }}>{loadErr}</div>}
+      {!cfg ? (
+        !loadErr && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Loading...</div>
+      ) : (
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 16, background: "var(--color-background-primary)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 6 }}>
+            <div style={LABEL}>Monthly sales from (₹, incl. GST)</div>
+            <div style={LABEL}>Commission rate (%)</div>
+          </div>
+          {cfg.slabs.map((s, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 28px", gap: 10, marginBottom: 8, alignItems: "center" }}>
+              <input aria-label={`Slab ${i + 1} sales from`} inputMode="numeric" value={s.from} onChange={e => setSlab(i, "from", e.target.value)} style={INPUT} />
+              <input aria-label={`Slab ${i + 1} rate`} inputMode="decimal" value={s.rate} onChange={e => setSlab(i, "rate", e.target.value)} style={INPUT} />
+              <button aria-label={`Remove slab ${i + 1}`} disabled={cfg.slabs.length <= 1} onClick={() => touch({ ...cfg, slabs: cfg.slabs.filter((_, j) => j !== i) })}
+                style={{ background: "none", border: "none", cursor: cfg.slabs.length <= 1 ? "default" : "pointer", color: "var(--color-text-secondary)", fontSize: 16, opacity: cfg.slabs.length <= 1 ? 0.3 : 1 }}>
+                <i className="ti ti-x" />
+              </button>
+            </div>
+          ))}
+          <button onClick={() => touch({ ...cfg, slabs: [...cfg.slabs, { from: "", rate: "" }] })}
+            style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-info)", fontFamily: "inherit", padding: 0, marginBottom: 14 }}>
+            + Add slab
+          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
+            <div>
+              <div style={LABEL}>GST factor</div>
+              <input aria-label="GST factor" inputMode="decimal" value={cfg.gstFactor} onChange={e => touch({ ...cfg, gstFactor: e.target.value })} style={INPUT} />
+            </div>
+            <div>
+              <div style={LABEL}>Channels that count (comma separated)</div>
+              <input aria-label="Channels that count" value={cfg.channels} onChange={e => touch({ ...cfg, channels: e.target.value })} style={INPUT} />
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 8 }}>
+            Commission is worked out on order value × the GST factor. Below the first slab, commission is 0.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+            {msg.err && <span role="alert" style={{ fontSize: 12, color: "#C0392B" }}>{msg.err}</span>}
+            {msg.ok && <span style={{ fontSize: 12, color: "#27500A" }}>{msg.ok}</span>}
+            {defaults && (
+              <button onClick={() => touch(toForm(defaults))} style={{ fontSize: 12, padding: "7px 14px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>
+                Reset to defaults
+              </button>
+            )}
+            <button onClick={save} disabled={saving} style={{ fontSize: 12, padding: "7px 18px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Saving..." : "Save rules"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings({ currentUser }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -350,6 +456,7 @@ export default function Settings({ currentUser }) {
       )}
 
       {currentUser?.role === "admin" && <PaymentAccounts />}
+      {currentUser?.role === "admin" && <CommissionRules />}
 
       <div style={{ marginTop: 24, padding: "14px 16px", background: "var(--color-background-secondary)", borderRadius: 10, fontSize: 12, color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-tertiary)" }}>
         <i className="ti ti-info-circle" style={{ marginRight: 6, fontSize: 13 }} />
