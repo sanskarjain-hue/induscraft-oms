@@ -15,6 +15,10 @@ export const STAGES = [
   'Delivered to customer'
 ];
 
+// Items marked "In stock" already exist, so they skip vendor/production (stages 0-3)
+// and start at QC.
+export const IN_STOCK_START_STAGE = 4;
+
 // Role labels only — do NOT hardcode person names here. Real names/initials come from the
 // User records via the API (see api.js fetchUsers / App.jsx currentUser). A previous version
 // of this file hardcoded names like 'Kishore' here, which silently drifted out of sync with

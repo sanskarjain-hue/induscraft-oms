@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { CHANNELS, STAGES } from "./data";
+import { CHANNELS, STAGES, IN_STOCK_START_STAGE } from "./data";
 import { fetchNextOrderId, lookupCustomer, uploadFile, fetchUsers } from "./api";
 import { formatCurrency, channelLabel, TagSelect, canonicalTag } from "./ui";
 
@@ -47,6 +47,7 @@ function emptyItem() {
     _id: Date.now() + Math.random(),
     productId: "",
     shopifyHandle: "",
+    inStock: false,
     name: "",
     qty: 1,
     price: "",
@@ -585,6 +586,8 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
       items: items.map((item, idx) => ({
         id: `i_${orderId}_${idx}`,
         productId: item.productId || `PRD-NEW-${idx + 1}`,
+        shopifyHandle: item.shopifyHandle || "",
+        inStock: !!item.inStock,
         name: item.name,
         qty: parseInt(item.qty) || 1,
         price: parseFloat(item.price) * (parseInt(item.qty) || 1),
@@ -600,7 +603,9 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
         vendorCost: 0,
         committedDate: null,
         actualDate: null,
-        stageIndex: 0,
+        stageIndex: item.inStock ? IN_STOCK_START_STAGE : 0,
+        // In-stock items enter QC right away; the history entry is what starts the QC timer.
+        stageHistory: item.inStock ? [{ stageIndex: IN_STOCK_START_STAGE, enteredAt: new Date().toISOString() }] : [],
         finishingProgress: Object.fromEntries(item.finishingSteps.map(s => [s, "pending"])),
         originalDelivery,
         currentDelivery: originalDelivery,
@@ -883,6 +888,14 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
                       onAdd={fn => updateItem(idx, "measurementPhotos", typeof fn === "function" ? prev => fn(prev || []) : fn)}
                       hint="Upload measurement drawing or sketch"
                     />
+
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "#1a1a1a", cursor: "pointer", padding: "8px 10px", borderRadius: 8, background: item.inStock ? "#EAF3DE" : "#f5f5f3", border: `0.5px solid ${item.inStock ? "#C0DD97" : "#e5e5e0"}` }}>
+                      <input type="checkbox" checked={!!item.inStock} onChange={e => updateItem(idx, "inStock", e.target.checked)} style={{ marginTop: 2 }} />
+                      <span>
+                        <span style={{ fontWeight: 500 }}>Item is in stock</span>
+                        <span style={{ display: "block", color: "#666660", marginTop: 2 }}>No vendor or production needed — this item starts at the QC step.</span>
+                      </span>
+                    </label>
 
                     <Field label="Remarks">
                       <textarea value={item.remarks} onChange={e => updateItem(idx, "remarks", e.target.value)}

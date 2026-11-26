@@ -268,28 +268,50 @@ export async function logDelay(orderId, itemId, data) {
 }
 
 // ── VENDORS ───────────────────────────────────────────────
+// The API returns vendors with Mongo's `_id` only, but most of the UI (print sheets,
+// order tabs, Vendors page) looks vendors up by `id`. Every vendor that comes back from
+// the API gets `id` filled in from `_id` here, once, so all those lookups resolve.
+// `id` is never sent back to the server (the backend schema ignores it).
+function withVendorId(v) {
+  return v && typeof v === "object" ? { ...v, id: v.id || v._id } : v;
+}
+
 export async function fetchVendors() {
-  return apiFetch("/vendors");
+  const list = await apiFetch("/vendors");
+  return Array.isArray(list) ? list.map(withVendorId) : list;
 }
 
 export async function createVendor(vendorData) {
-  return apiFetch("/vendors", {
+  return withVendorId(await apiFetch("/vendors", {
     method: "POST",
     body: JSON.stringify(vendorData),
-  });
+  }));
 }
 
 export async function importVendors(vendors) {
-  return apiFetch("/vendors/bulk", {
+  const list = await apiFetch("/vendors/bulk", {
     method: "POST",
     body: JSON.stringify({ vendors }),
   });
+  return Array.isArray(list) ? list.map(withVendorId) : list;
 }
 
 export async function updateVendor(id, data) {
-  return apiFetch(`/vendors/${id}`, {
+  return withVendorId(await apiFetch(`/vendors/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
+  }));
+}
+
+// ── PAYMENT ACCOUNTS (per channel, shown on the Customer Copy) ──
+export async function fetchPaymentAccounts() {
+  return apiFetch("/settings/payment-accounts");
+}
+
+export async function savePaymentAccounts(accounts) {
+  return apiFetch("/settings/payment-accounts", {
+    method: "PUT",
+    body: JSON.stringify({ accounts }),
   });
 }
 

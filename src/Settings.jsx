@@ -212,6 +212,93 @@ function AddUserForm({ onAdd }) {
   );
 }
 
+const PAY_CHANNELS = ["Bangalore", "Pune", "Jodhpur", "Website", "Wholesale"];
+const PAY_FIELDS = [
+  ["accountName", "Account name"],
+  ["bankName", "Bank"],
+  ["accountNumber", "Account number"],
+  ["ifsc", "IFSC"],
+  ["upi", "UPI ID"],
+  ["notes", "Note (optional)"],
+];
+
+// Bank / UPI details printed on the Customer Copy, one set per sales channel.
+// They are only defaults: the Customer Copy preview lets them be edited before printing.
+function PaymentAccounts() {
+  const [accounts, setAccounts] = useState(null);
+  const [channel, setChannel] = useState(PAY_CHANNELS[0]);
+  const [loadErr, setLoadErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState({ ok: "", err: "" });
+
+  useEffect(() => {
+    api.fetchPaymentAccounts()
+      .then(r => setAccounts(r.accounts || {}))
+      .catch(e => { setLoadErr(e.message || "Could not load payment accounts"); setAccounts({}); });
+  }, []);
+
+  function setField(key, value) {
+    setAccounts(prev => ({ ...prev, [channel]: { ...((prev || {})[channel] || {}), [key]: value } }));
+    setMsg({ ok: "", err: "" });
+  }
+
+  async function save() {
+    setSaving(true); setMsg({ ok: "", err: "" });
+    try {
+      const r = await api.savePaymentAccounts(accounts);
+      setAccounts(r.accounts || accounts);
+      setMsg({ ok: "Saved", err: "" });
+      setTimeout(() => setMsg(m => ({ ...m, ok: "" })), 2000);
+    } catch (e) { setMsg({ ok: "", err: e.message || "Could not save" }); }
+    finally { setSaving(false); }
+  }
+
+  const current = (accounts && accounts[channel]) || {};
+  const INPUT = { width: "100%", fontSize: 12, padding: "7px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-primary)", fontFamily: "inherit", boxSizing: "border-box" };
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>Payment accounts</div>
+      <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 14 }}>
+        Account details printed on the Customer Copy, set per channel. They can still be edited on the print preview.
+      </div>
+      {loadErr && <div style={{ fontSize: 12, color: "#C0392B", marginBottom: 8 }}>{loadErr}</div>}
+      {!accounts ? (
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Loading...</div>
+      ) : (
+        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 16, background: "var(--color-background-primary)" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {PAY_CHANNELS.map(c => (
+              <button key={c} onClick={() => setChannel(c)} style={{
+                fontSize: 12, padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                border: "0.5px solid var(--color-border-secondary)",
+                background: channel === c ? "var(--color-background-secondary)" : "transparent",
+                color: channel === c ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+                fontWeight: channel === c ? 500 : 400,
+              }}>{c === "Wholesale" ? "B2B" : c}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {PAY_FIELDS.map(([key, label]) => (
+              <div key={key} style={key === "notes" ? { gridColumn: "1 / -1" } : undefined}>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div>
+                <input value={current[key] || ""} onChange={e => setField(key, e.target.value)} style={INPUT} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+            {msg.err && <span style={{ fontSize: 12, color: "#C0392B" }}>{msg.err}</span>}
+            {msg.ok && <span style={{ fontSize: 12, color: "#27500A" }}>{msg.ok}</span>}
+            <button onClick={save} disabled={saving} style={{ fontSize: 12, padding: "7px 18px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Saving..." : "Save all channels"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings({ currentUser }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -261,6 +348,8 @@ export default function Settings({ currentUser }) {
           <AddUserForm onAdd={handleAdd} />
         </>
       )}
+
+      {currentUser?.role === "admin" && <PaymentAccounts />}
 
       <div style={{ marginTop: 24, padding: "14px 16px", background: "var(--color-background-secondary)", borderRadius: 10, fontSize: 12, color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-tertiary)" }}>
         <i className="ti ti-info-circle" style={{ marginRight: 6, fontSize: 13 }} />

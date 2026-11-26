@@ -2,14 +2,23 @@ import { useState } from "react";
 import PrintView from "./PrintView";
 import CostApproval from "./CostApproval";
 import { Badge, channelVariant, stageVariant, Btn, Card, SectionTitle, StatCard, formatCurrency, TimerPill, confirmAsync, channelLabel, TagSelect, canonicalTag } from "./ui";
-import { STAGES } from "./data";
+import { STAGES, IN_STOCK_START_STAGE } from "./data";
 import { useUploads, PendingTiles } from "./useUploads";
+import { suggestVendorForItem } from "./vendorSuggest";
 
 // FIX: orders saved before the item.id schema fix have items with no `id` field
 // (it was silently stripped by Mongoose strict mode). This helper falls back to
 // Mongoose's own `_id` so all item matching works for both old and new orders.
 function itemKey(item) {
   return item.id || item._id;
+}
+
+// In-stock items skip the vendor/production steps, so those steps are left out of their trackers.
+function visibleStage(item, stageIdx) {
+  return !item.inStock || stageIdx >= IN_STOCK_START_STAGE;
+}
+function firstVisibleStage(item) {
+  return item.inStock ? IN_STOCK_START_STAGE : 0;
 }
 
 function TabBar({ tabs, active, onSelect }) {
@@ -370,7 +379,7 @@ function StagePhotoStrip({ photos, label, canUpload, onAddPhoto }) {
 }
 
 // ── VENDOR ASSIGN ─────────────────────────────────────────
-function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
+function VendorAssign({ item, order, vendors, orders, onUpdate, onVendorCreated }) {
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -387,6 +396,25 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
   function assignVendor(vendorId) {
     const key = itemKey(item);
     const updated = { ...order, items: order.items.map(i => itemKey(i) === key ? { ...i, vendorId, stageIndex: Math.max(i.stageIndex, 1) } : i), _editLogField: "Vendor assignment" };
+    onUpdate(updated);
+    setShowDropdown(false);
+    setSearch("");
+  }
+
+  // Same product seen in a past order with a vendor? Offer that vendor + last cost as a
+  // one-tap suggestion. Nothing is changed until Apply is pressed.
+  const suggestion = !assigned ? suggestVendorForItem(item, order.id, orders, vendors) : null;
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    const key = itemKey(item);
+    const updated = {
+      ...order,
+      items: order.items.map(i => itemKey(i) === key
+        ? { ...i, vendorId: suggestion.vendorId, ...(suggestion.cost ? { vendorCost: suggestion.cost } : {}), stageIndex: Math.max(i.stageIndex, 1) }
+        : i),
+      _editLogField: "Vendor assignment",
+    };
     onUpdate(updated);
     setShowDropdown(false);
     setSearch("");
@@ -441,6 +469,16 @@ function VendorAssign({ item, order, vendors, onUpdate, onVendorCreated }) {
         </div>
       ) : (
         <div style={{ position: "relative" }}>
+          {suggestion && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 8, borderRadius: 8, background: "#EAF3DE", border: "0.5px solid #C0DD97" }}>
+              <div style={{ flex: 1, fontSize: 12, color: "#27500A" }}>
+                <span style={{ fontWeight: 500 }}>{suggestion.similar ? "Similar item last made by " : "Last made by "}{suggestion.vendor.name}</span>
+                {suggestion.cost ? <span> at ₹{suggestion.cost.toLocaleString("en-IN")}</span> : null}
+                <span style={{ color: "#3B6D11" }}> &middot; {suggestion.fromOrderId}{suggestion.fromDate ? `, ${suggestion.fromDate}` : ""}</span>
+              </div>
+              <button onClick={applySuggestion} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, border: "none", background: "#27500A", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Apply</button>
+            </div>
+          )}
           {/* Search input */}
           <input
             value={search}
@@ -676,7 +714,7 @@ function ItemPriceEditor({ order, item, canEdit, onUpdate }) {
   );
 }
 
-function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
+function LineItemsTab({ order, role, vendors, orders, onUpdate, onVendorCreated }) {
   // Salespeople (and admins) can update product images for an item at any time,
   // independent of which stage it's in. This logs an edit-log entry so it's clear
   // who changed the reference photos and when.
@@ -907,14 +945,20 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
             )}
 
             {/* Vendor assignment — Admin only */}
-            {role === "admin" && (
+            {role === "admin" && !item.inStock && (
               <VendorAssign
                 item={item}
                 order={order}
                 vendors={vendors}
+                orders={orders}
                 onUpdate={onUpdate}
                 onVendorCreated={onVendorCreated}
               />
+            )}
+            {item.inStock && (
+              <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 12, marginBottom: 12, fontSize: 12, color: "var(--color-text-secondary)" }}>
+                <i className="ti ti-box" style={{ marginRight: 6 }} />In stock &mdash; no vendor needed, starts at QC
+              </div>
             )}
 
             {/* Production status mini tracker */}
@@ -924,10 +968,10 @@ function LineItemsTab({ order, role, vendors, onUpdate, onVendorCreated }) {
                 <Badge variant={stageVariant(item.stageIndex)}>{STAGES[item.stageIndex]}</Badge>
               </div>
               <div style={{ display: "flex", alignItems: "flex-start" }}>
-                {STAGES.map((s, i) => (
+                {STAGES.map((s, i) => ({ s, i })).filter(({ i }) => visibleStage(item, i)).map(({ s, i }) => (
                   <div key={s} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-                      <div style={{ flex: 1, height: 2, background: i === 0 ? "transparent" : i <= item.stageIndex ? "#639922" : "var(--color-border-tertiary)" }} />
+                      <div style={{ flex: 1, height: 2, background: i === firstVisibleStage(item) ? "transparent" : i <= item.stageIndex ? "#639922" : "var(--color-border-tertiary)" }} />
                       <div style={{ width: 14, height: 14, borderRadius: "50%", flexShrink: 0, background: i < item.stageIndex ? "#639922" : i === item.stageIndex ? "#FAEEDA" : "var(--color-background-primary)", border: `1.5px solid ${i < item.stageIndex ? "#639922" : i === item.stageIndex ? "#BA7517" : "var(--color-border-tertiary)"}` }} />
                       <div style={{ flex: 1, height: 2, background: i === STAGES.length - 1 ? "transparent" : i < item.stageIndex ? "#639922" : "var(--color-border-tertiary)" }} />
                     </div>
@@ -1143,7 +1187,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
                   title="Correct this item's stage — use if it was accidentally advanced or reverted"
                   style={{ fontSize: 11, padding: "3px 6px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-secondary)", fontFamily: "inherit", cursor: "pointer" }}
                 >
-                  {STAGES.map((s, i) => <option key={s} value={i}>{i}. {s}</option>)}
+                  {STAGES.map((s, i) => ({ s, i })).filter(({ i }) => visibleStage(item, i)).map(({ s, i }) => <option key={s} value={i}>{i}. {s}</option>)}
                 </select>
               )}
             </div>
@@ -1161,7 +1205,7 @@ function TrackerTab({ order, role, vendors, onUpdate, currentUser }) {
             )}
 
             <div style={{ padding: 16 }}>
-              {STAGES.map((stageName, i) => {
+              {STAGES.map((stageName, i) => ({ stageName, i })).filter(({ i }) => visibleStage(item, i)).map(({ stageName, i }) => {
                 const isDone = i < item.stageIndex || (i === 8 && item.stageIndex === 8);
                 const isActive = i === item.stageIndex && !(i === 8 && item.stageIndex === 8);
                 return (
@@ -1817,7 +1861,7 @@ export default function OrderDetail({ order, role, vendors, orders, onBack, onUp
       </div>
       <div style={{ background: "var(--color-background-primary)", borderRadius: "0 0 12px 12px", border: "0.5px solid var(--color-border-tertiary)", borderTop: "none", padding: 16, marginBottom: 12 }}>
         {tab === "Order info" && <OrderInfoTab order={order} role={role} onUpdate={onUpdate} currentUser={currentUser} />}
-        {tab === "Line items" && <LineItemsTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} onVendorCreated={onVendorCreated} />}
+        {tab === "Line items" && <LineItemsTab order={order} role={role} vendors={vendors} orders={orders} onUpdate={onUpdate} onVendorCreated={onVendorCreated} />}
         {tab === "Order tracker" && <TrackerTab order={order} role={role} vendors={vendors} onUpdate={onUpdate} currentUser={currentUser} />}
         {tab === "Vendors & production" && canSeeVendors && <VendorsTab order={order} vendors={vendors} role={role} onVendorClick={onVendorClick} />}
         {tab === "Payments" && canSeePayments && <PaymentsTab order={order} role={role} onUpdate={onUpdate} />}
