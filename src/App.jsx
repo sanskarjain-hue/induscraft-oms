@@ -9,6 +9,7 @@ import { VendorsSection, AfterSales, Reports } from "./Sections";
 import PastOrders from "./PastOrders";
 import Settings from "./Settings";
 import Pipeline from "./Pipeline";
+import Visits from "./Visits";
 import { ConfirmHost, confirmAsync, PageSkeleton } from "./ui";
 
 const NAV = [
@@ -18,6 +19,7 @@ const NAV = [
   { id: "aftersales", label: "After-sales", icon: "ti-tool" },
   { id: "reports", label: "Reports", icon: "ti-chart-bar" },
   { id: "pastorders", label: "Past Orders", icon: "ti-archive" },
+  { id: "visits", label: "Visits", icon: "ti-walk" },
   { id: "pipeline", label: "Pipeline", icon: "ti-chart-dots" },
   { id: "settings", label: "Settings", icon: "ti-settings" },
 ];
@@ -468,7 +470,7 @@ export default function App() {
                 {NAV.filter(n => {
                   if (n.id === "reports" && !REPORTS_ENABLED) return false;
                   if (role === "admin") return true;
-                  if (role === "sales") return ["dashboard", "orders", "pipeline", "pastorders"].includes(n.id);
+                  if (role === "sales") return ["dashboard", "orders", "visits", "pipeline", "pastorders"].includes(n.id);
                   if (role === "qc") return ["dashboard", "orders"].includes(n.id);
                   if (role === "accountant") return ["dashboard", "orders", "reports", "pastorders"].includes(n.id);
                   return ["dashboard", "orders"].includes(n.id);
@@ -617,6 +619,7 @@ export default function App() {
               ))}
             {page === "pastorders" && <PastOrders orders={allOrders} role={role} onOrderClick={(id) => navigate("orders", id)} onUpdate={arg => handleUpdateOrder(arg)} />}
             {page === "settings" && role === "admin" && <Settings currentUser={currentUser} />}
+            {page === "visits" && (role === "admin" || role === "sales") && <Visits role={role} onOpenPipeline={() => navigate("pipeline")} />}
             {page === "pipeline" && (role === "admin" || role === "sales") && <Pipeline currentUser={currentUser} role={role} onCreateOrder={(prefill) => { setPrefillOrder(prefill); navigate("orders", null); }} />}
             </div>
             )}

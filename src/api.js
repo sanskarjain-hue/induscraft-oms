@@ -385,3 +385,26 @@ export async function addDealLog(id, text) {
 export async function deleteDeal(id) {
   return apiFetch(`/deals/${id}`, { method: "DELETE" });
 }
+
+// ── VISITS (showroom walk-ins) & WEBSITE ENQUIRIES ───────
+export async function fetchVisits(days = 30) {
+  return apiFetch(`/visits?days=${days}`);
+}
+
+export async function createVisit(data) {
+  return apiFetch("/visits", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateVisit(id, data) {
+  return apiFetch(`/visits/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+// Adds a visit to the pipeline as a Deal. data: { estimatedValue? }
+export async function convertVisit(id, data = {}) {
+  return apiFetch(`/visits/${id}/convert`, { method: "POST", body: JSON.stringify(data) });
+}
+
+// Website enquiries skip the visit log and create a Deal directly.
+export async function createWebsiteEnquiry(data) {
+  return apiFetch("/visits/website-enquiry", { method: "POST", body: JSON.stringify(data) });
+}
