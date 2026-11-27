@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { CHANNELS, STAGES, IN_STOCK_START_STAGE } from "./data";
+import { channelsFor, STAGES, IN_STOCK_START_STAGE } from "./data";
 import { fetchNextOrderId, lookupCustomer, uploadFile, fetchUsers } from "./api";
 import { formatCurrency, channelLabel, TagSelect, canonicalTag } from "./ui";
 
@@ -702,7 +702,7 @@ export default function NewOrderForm({ vendors = [], onSave, onCancel, currentUs
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Field label="Channel *">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {CHANNELS.map(c => (
+                  {channelsFor(currentUser).map(c => (
                     <button key={c} onClick={() => handleChannelChange(c)} style={{
                       fontSize: 13, padding: "7px 16px", borderRadius: 8, cursor: "pointer",
                       border: `0.5px solid ${channel === c ? "#C0392B" : "#cccccc"}`,

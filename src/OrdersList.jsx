@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Badge, channelVariant, stageVariant, delayStatus, DelayDot, formatCurrency, isNewOrder, isPastOrder, firstItemImageSrc, daysOverdue, startOfToday, channelLabel, collectB2BTags } from "./ui";
-import { STAGES, CHANNELS } from "./data";
+import { STAGES, channelsFor } from "./data";
 import NewOrderForm from "./NewOrderForm";
 
 export default function OrdersList({ orders, vendors, role, onOrderClick, onNewOrder, prefill, onPrefillUsed, currentUser }) {
@@ -80,7 +80,7 @@ export default function OrdersList({ orders, vendors, role, onOrderClick, onNewO
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by customer, order ID or tag..."
           style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: 240, fontFamily: "inherit" }} />
-        {["All", ...CHANNELS].map(c => (
+        {["All", ...channelsFor(currentUser)].map(c => (
           <button key={c} onClick={() => {
             setChannelFilter(c);
             // A tag filter makes no sense outside B2B — clear it so the list can't

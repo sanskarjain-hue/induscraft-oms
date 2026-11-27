@@ -15,11 +15,31 @@ const ROLE_COLOR = {
   accountant: { bg: "#E6F1FB", fg: "#0C447C" },
 };
 
+// Which stores a sales user works in. They see, create and edit orders from these stores only.
+const STORE_OPTIONS = ["Bangalore", "Pune", "Jodhpur"];
+function StoresPicker({ value, onChange }) {
+  const picked = value || [];
+  const toggle = s => onChange(picked.includes(s) ? picked.filter(x => x !== s) : [...picked, s]);
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Stores (they only see these stores' orders)</div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {STORE_OPTIONS.map(s => (
+          <label key={s} style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+            <input type="checkbox" checked={picked.includes(s)} onChange={() => toggle(s)} /> {s}
+          </label>
+        ))}
+      </div>
+      {picked.length === 0 && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>No store picked — this person will see no orders.</div>}
+    </div>
+  );
+}
+
 function UserRow({ user, currentUserId, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [form, setForm] = useState({ name: user.name, username: user.username, role: user.role });
+  const [form, setForm] = useState({ name: user.name, username: user.username, role: user.role, stores: user.stores || [] });
   const [pw, setPw] = useState({ newPw: "", confirm: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -113,6 +133,11 @@ function UserRow({ user, currentUserId, onUpdate, onDelete }) {
               {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
+          {form.role === "sales" && (
+            <div style={{ width: "100%" }}>
+              <StoresPicker value={form.stores} onChange={stores => setForm(f => ({ ...f, stores }))} />
+            </div>
+          )}
           <button onClick={saveEdit} disabled={saving} style={{ fontSize: 12, padding: "7px 16px", borderRadius: 8, border: "none", background: "#C0392B", color: "white", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>
             {saving ? "Saving..." : "Save"}
           </button>
@@ -152,7 +177,7 @@ function UserRow({ user, currentUserId, onUpdate, onDelete }) {
 
 function AddUserForm({ onAdd }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", username: "", password: "", role: "sales" });
+  const [form, setForm] = useState({ name: "", username: "", password: "", role: "sales", stores: [] });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -162,7 +187,7 @@ function AddUserForm({ onAdd }) {
     try {
       const user = await api.createUser(form);
       onAdd(user);
-      setForm({ name: "", username: "", password: "", role: "sales" });
+      setForm({ name: "", username: "", password: "", role: "sales", stores: [] });
       setOpen(false);
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
@@ -199,6 +224,11 @@ function AddUserForm({ onAdd }) {
               </select>
             </div>
           </div>
+          {form.role === "sales" && (
+            <div style={{ marginBottom: 10 }}>
+              <StoresPicker value={form.stores} onChange={stores => setForm(f => ({ ...f, stores }))} />
+            </div>
+          )}
           {err && <div style={{ fontSize: 12, color: "#C0392B", marginBottom: 8 }}>{err}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={() => { setOpen(false); setErr(""); }} style={{ fontSize: 12, padding: "7px 16px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>

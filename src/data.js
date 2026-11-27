@@ -3,6 +3,14 @@
 // data from the API) and risked being confused with live data.
 export const CHANNELS = ['Bangalore', 'Pune', 'Jodhpur', 'Website', 'Wholesale'];
 
+// The channels a user may work in. A sales user is limited to the stores on their account; everyone
+// else gets all of them. (A login saved before stores existed has no list, so it shows everything
+// until the next sign-in — the server enforces the real limit either way.)
+export function channelsFor(user) {
+  if (user && user.role === 'sales' && Array.isArray(user.stores)) return CHANNELS.filter(c => user.stores.includes(c));
+  return CHANNELS;
+}
+
 export const STAGES = [
   'Looking for vendor',
   'Processing started',
